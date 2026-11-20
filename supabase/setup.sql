@@ -146,6 +146,9 @@ grant select, insert, update, delete on public.documents to authenticated;
 grant select on public.membres, public.codes_acces to authenticated;
 revoke all on public.documents, public.membres, public.codes_acces from anon;
 
+revoke execute on function public.est_membre, public.est_coordo, public.mon_role, public.premier_coordo,
+  public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.doc_fusion
+  from public, anon;
 grant execute on function public.est_membre, public.est_coordo, public.mon_role, public.premier_coordo,
   public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.doc_fusion
   to authenticated;
