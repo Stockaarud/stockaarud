@@ -1,0 +1,306 @@
+/* =====================================================================
+   Stockaarud : branchement sur Supabase
+   Ce fichier fournit à l'appli les mêmes outils que sur claude.ai
+   (base de données partagée, comptes, photos, téléchargements),
+   mais avec la base Supabase de la structure.
+   ===================================================================== */
+(function () {
+  "use strict";
+  const CFG = window.STOCKAARUD_CONFIG || {};
+  const LS = {
+    get(k, d) { try { const v = localStorage.getItem("skb:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("skb:" + k, JSON.stringify(v)); } catch (e) {} },
+    del(k) { try { localStorage.removeItem("skb:" + k); } catch (e) {} }
+  };
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const params = new URLSearchParams(location.search);
+  const urlCode = (params.get("code") || "").trim().toUpperCase();
+  if (urlCode) { LS.set("pendingCode", urlCode); history.replaceState(null, "", location.pathname + location.hash); }
+
+  let sbUrl = CFG.supabaseUrl || LS.get("url", "");
+  let sbKey = CFG.supabaseKey || LS.get("key", "");
+  let sb = null, uid = null, role = LS.get("role", null), synced = false;
+
+  /* ---------- Écran de connexion ---------- */
+  const OV_STYLE = `
+  #skb{position:fixed;inset:0;z-index:100;background:var(--bg,#f2f5f3);color:var(--fg,#14201d);overflow:auto;
+    padding:calc(24px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+  #skb .in{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+  #skb .logo{display:flex;align-items:center;gap:12px}#skb .logo img{width:52px;height:52px}
+  #skb .logo b{font:800 24px var(--display,"Archivo",sans-serif);letter-spacing:.01em;text-transform:uppercase}
+  #skb .logo b span{color:var(--brand-2,#f2b705);-webkit-text-stroke:3px var(--brand-ink,#14201d);paint-order:stroke fill}
+  #skb .card{background:var(--surface,#fff);border:1px solid var(--line,#d0dbd5);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
+  #skb h2{margin:0;font:800 19px var(--display,"Archivo",sans-serif)}#skb p{margin:0}
+  #skb label{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--muted,#53645d)}
+  #skb .err{color:var(--crit,#b3332a);font-weight:700;min-height:1.2em}
+  #skb .code{font:800 26px var(--display,"Archivo",sans-serif);letter-spacing:.25em;text-align:center;text-transform:uppercase}
+  #skb .alt{background:none;border:0;color:var(--accent,#1f4d3a);text-decoration:underline;font:inherit;cursor:pointer;padding:10px 0;min-height:44px;text-align:left}`;
+  let ov = null;
+  function show(html) {
+    if (!document.getElementById("skbStyle")) { const st = document.createElement("style"); st.id = "skbStyle"; st.textContent = OV_STYLE; document.head.appendChild(st); }
+    if (!ov) { ov = document.createElement("div"); ov.id = "skb"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); document.body.appendChild(ov); }
+    ov.innerHTML = '<div class="in"><div class="logo"><img src="icons/icon-192.png" alt=""><b>Stock<span>aarud</span></b></div>' + html + "</div>";
+    const f = ov.querySelector("input"); if (f) setTimeout(() => f.focus(), 50);
+  }
+  function hide() { if (ov) { ov.remove(); ov = null; } }
+  const $ = s => ov && ov.querySelector(s);
+  function busy(btn, on) { if (btn) { btn.disabled = on; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = on ? "Un instant…" : btn.dataset.t; } }
+
+  function screenSetup(msg) {
+    show(`<div class="card"><h2>Brancher la base de données</h2><p>Indique l'adresse et la clé publique du projet Supabase de ta structure (Supabase › Project Settings › API). Le guide d'installation explique où les trouver.</p>
+      <label>Adresse du projet<input id="sU" placeholder="https://xxxx.supabase.co" value="${esc(sbUrl)}" autocomplete="off"></label>
+      <label>Clé publique (anon / publishable)<input id="sK" value="${esc(sbKey)}" autocomplete="off"></label>
+      <div class="err" id="sE">${esc(msg || "")}</div><button class="btn primary big" id="sGo">Enregistrer</button></div>`);
+    $("#sGo").onclick = () => {
+      const u = $("#sU").value.trim().replace(/\/+$/, ""), k = $("#sK").value.trim();
+      if (!/^https:\/\/.+/.test(u) || k.length < 20) { $("#sE").textContent = "Vérifie l'adresse (https://…) et la clé."; return; }
+      LS.set("url", u); LS.set("key", k); location.reload();
+    };
+  }
+
+  function screenLogin(msg) {
+    const pc = LS.get("pendingCode", "");
+    show(`<div class="card"><h2>Je fais partie de l'équipe</h2><p>Entre le code donné par le coordo (ou scanne son QR code).</p>
+      <input id="tC" class="code" maxlength="6" autocomplete="off" autocapitalize="characters" inputmode="text" value="${esc(pc)}" aria-label="Code d'équipe">
+      <div class="err" id="tE">${esc(msg || "")}</div><button class="btn primary big" id="tGo">Rejoindre l'équipe</button></div>
+      <div class="card"><h2>Je suis coordo</h2>
+      <label>Adresse e-mail<input id="cM" type="email" autocomplete="username"></label>
+      <label>Mot de passe<input id="cP" type="password" autocomplete="current-password"></label>
+      <div class="err" id="cE"></div><button class="btn big" id="cGo">Se connecter</button>
+      <button class="alt" id="cNew">Première installation : créer le compte coordo</button></div>
+      <button class="alt" id="cfg">Changer de base de données</button>`);
+    $("#tC").onkeydown = e => { if (e.key === "Enter") $("#tGo").click(); };
+    $("#cP").onkeydown = e => { if (e.key === "Enter") $("#cGo").click(); };
+    $("#cfg").onclick = () => screenSetup();
+    $("#tGo").onclick = async () => {
+      const code = $("#tC").value.trim().toUpperCase(), b = $("#tGo");
+      if (code.length < 4) { $("#tE").textContent = "Entre le code à 6 caractères."; return; }
+      busy(b, true);
+      try {
+        let { data: s } = await sb.auth.getSession();
+        if (!s.session) { const r = await sb.auth.signInAnonymously(); if (r.error) throw r.error; }
+        const { data, error } = await sb.rpc("rejoindre", { p_code: code });
+        if (error) throw error;
+        if (!data) { busy(b, false); $("#tE").textContent = "Code inconnu ou désactivé. Demande un nouveau code au coordo."; return; }
+        LS.del("pendingCode"); await enter();
+      } catch (e) { busy(b, false); $("#tE").textContent = netMsg(e, "La connexion a échoué. Vérifie que les connexions anonymes sont activées dans Supabase."); }
+    };
+    $("#cGo").onclick = async () => {
+      const b = $("#cGo"); busy(b, true);
+      const { error } = await sb.auth.signInWithPassword({ email: $("#cM").value.trim(), password: $("#cP").value });
+      if (error) { busy(b, false); $("#cE").textContent = /invalid/i.test(error.message) ? "E-mail ou mot de passe incorrect." : netMsg(error); return; }
+      await enter(true);
+    };
+    $("#cNew").onclick = () => screenSignup();
+  }
+
+  function screenSignup() {
+    show(`<div class="card"><h2>Créer le compte coordo</h2><p>Le premier compte créé devient coordo. Les suivants auront besoin d'un code coordo.</p>
+      <label>Adresse e-mail<input id="nM" type="email" autocomplete="username"></label>
+      <label>Mot de passe (8 caractères ou plus)<input id="nP" type="password" autocomplete="new-password"></label>
+      <div class="err" id="nE"></div><button class="btn primary big" id="nGo">Créer le compte</button>
+      <button class="alt" id="nBack">Retour</button></div>`);
+    $("#nBack").onclick = () => screenLogin();
+    $("#nGo").onclick = async () => {
+      const m = $("#nM").value.trim(), p = $("#nP").value, b = $("#nGo");
+      if (!/.+@.+\..+/.test(m) || p.length < 8) { $("#nE").textContent = "Vérifie l'e-mail et choisis un mot de passe d'au moins 8 caractères."; return; }
+      busy(b, true);
+      const { data, error } = await sb.auth.signUp({ email: m, password: p });
+      if (error) { busy(b, false); $("#nE").textContent = netMsg(error); return; }
+      if (!data.session) { show(`<div class="card"><h2>Confirme ton adresse</h2><p>Un e-mail de confirmation a été envoyé à ${esc(m)}. Clique sur le lien, puis reviens ici pour te connecter.</p><button class="btn primary big" id="ok">J'ai confirmé</button></div>`); $("#ok").onclick = () => screenLogin(); return; }
+      await enter(true);
+    };
+  }
+
+  function screenCoordoCode() {
+    show(`<div class="card"><h2>Code coordo</h2><p>Un compte coordo existe déjà. Demande-lui un code « coordo » (Réglages › Accès et appareils).</p>
+      <input id="kC" class="code" maxlength="6" autocomplete="off" autocapitalize="characters" aria-label="Code coordo">
+      <div class="err" id="kE"></div><button class="btn primary big" id="kGo">Valider</button><button class="alt" id="kOut">Se déconnecter</button></div>`);
+    $("#kOut").onclick = () => logout();
+    $("#kGo").onclick = async () => {
+      const { data, error } = await sb.rpc("rejoindre", { p_code: $("#kC").value.trim().toUpperCase() });
+      if (error || data !== "coordo") { $("#kE").textContent = error ? netMsg(error) : "Ce code n'est pas un code coordo valide."; return; }
+      await enter();
+    };
+  }
+
+  function netMsg(e, fallback) {
+    const m = (e && (e.message || e.error_description)) || "";
+    if (!navigator.onLine || /fetch|network/i.test(m)) return "Pas de connexion internet. Réessaie dès que le réseau revient.";
+    return fallback || m || "Une erreur est survenue.";
+  }
+
+  /* ---------- Entrée dans l'appli ---------- */
+  let resolveReady; const ready = new Promise(r => (resolveReady = r));
+  async function enter(fromCoordoLogin) {
+    const { data: s } = await sb.auth.getSession();
+    if (!s.session) { screenLogin(); return; }
+    uid = s.session.user.id;
+    const anon = !!s.session.user.is_anonymous;
+    let r = null;
+    try {
+      const { data, error } = await sb.rpc("mon_role"); if (error) throw error; r = data;
+      if (!r && !anon) { const p = await sb.rpc("premier_coordo"); if (p.data) r = "coordo"; }
+    } catch (e) {
+      if (role && LS.get("uid", null) === uid) r = role; // hors ligne : on garde le dernier rôle connu
+      else { screenLogin(netMsg(e)); return; }
+    }
+    if (!r) { if (anon) { await sb.auth.signOut(); screenLogin("Cet appareil n'a plus accès. Demande un nouveau code au coordo."); } else screenCoordoCode(); return; }
+    role = r; LS.set("role", r); LS.set("uid", uid);
+    if (ov) hide();
+    startSync();
+    resolveReady(true);
+  }
+  async function logout() {
+    try { await sb.auth.signOut(); } catch (e) {}
+    LS.del("role"); LS.del("uid"); LS.del("cache");
+    try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith("stk:")) localStorage.removeItem(k); } } catch (e) {}
+    location.reload();
+  }
+
+  /* ---------- Base de données (même interface que sur claude.ai) ---------- */
+  const store = new Map();
+  const cached = LS.get("cache", null);
+  if (cached && typeof cached === "object") for (const c in cached) store.set(c, new Map(Object.entries(cached[c])));
+  const collL = new Map(), docL = new Map();
+  let saveT = 0;
+  function saveCache() { clearTimeout(saveT); saveT = setTimeout(() => { const o = {}; for (const [c, m] of store) o[c] = Object.fromEntries(m); LS.set("cache", o); }, 400); }
+  const meta = () => ({ fromCache: !synced, hasPendingWrites: false });
+  function docSnap(c, id) { const m = store.get(c), d = m && m.get(id); return { id, exists: d !== undefined, data: () => d, metadata: meta() }; }
+  function emitColl(c) {
+    const ls = collL.get(c); if (!ls || !ls.size) return;
+    const m = store.get(c) || new Map();
+    const docs = [...m.keys()].sort().map(id => docSnap(c, id));
+    const snap = { docs, size: docs.length, empty: !docs.length, metadata: meta(), docChanges: () => [] };
+    ls.forEach(cb => { try { cb(snap); } catch (e) { console.error(e); } });
+  }
+  function emitDoc(c, id) { const ls = docL.get(c + "/" + id); if (ls) ls.forEach(cb => { try { cb(docSnap(c, id)); } catch (e) { console.error(e); } }); }
+  function emitAll() { for (const c of collL.keys()) emitColl(c); for (const p of docL.keys()) { const [c, id] = p.split("/"); emitDoc(c, id); } }
+  function put(c, id, data) { if (!store.has(c)) store.set(c, new Map()); if (data === undefined) store.get(c).delete(id); else store.get(c).set(id, data); saveCache(); emitColl(c); emitDoc(c, id); }
+
+  function mapErr(error) {
+    const m = (error && error.message) || "";
+    if (!navigator.onLine || /fetch|network|Failed to fetch|timeout/i.test(m) || error.status === 0) return { code: "unavailable", message: m };
+    if (/row-level security|permission|42501/i.test(m + (error.code || ""))) return { code: "invalid_argument", message: m };
+    return { code: "unavailable", message: m };
+  }
+  async function fullSync() {
+    const fresh = new Map(); let from = 0; const step = 1000;
+    for (;;) {
+      const { data, error } = await sb.from("documents").select("coll,id,data").order("coll").order("id").range(from, from + step - 1);
+      if (error) throw error;
+      for (const r of data) { if (!fresh.has(r.coll)) fresh.set(r.coll, new Map()); fresh.get(r.coll).set(r.id, r.data); }
+      if (data.length < step) break; from += step;
+    }
+    store.clear(); for (const [c, m] of fresh) store.set(c, m);
+    synced = true; saveCache(); emitAll();
+  }
+  let channel = null, syncing = false;
+  async function startSync() {
+    if (!channel) {
+      channel = sb.channel("stockaarud-docs").on("postgres_changes", { event: "*", schema: "public", table: "documents" }, p => {
+        if (p.eventType === "DELETE") { const o = p.old || {}; if (o.coll) put(o.coll, o.id, undefined); }
+        else { const n = p.new || {}; if (n.coll) put(n.coll, n.id, n.data); }
+      }).subscribe(st => { if (st === "SUBSCRIBED") resync(); });
+    }
+    resync();
+  }
+  async function resync() { if (syncing || !navigator.onLine) return; syncing = true; try { await fullSync(); } catch (e) { console.warn("Synchronisation impossible", e); } syncing = false; }
+  window.addEventListener("online", resync);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") resync(); });
+
+  function split(path) { const i = path.indexOf("/"); return [path.slice(0, i), path.slice(i + 1)]; }
+  const db = Object.freeze({
+    doc(path) {
+      const [c, id] = split(path);
+      return {
+        id, path,
+        async get() { return docSnap(c, id); },
+        async set(data) {
+          const { error } = await sb.from("documents").upsert({ coll: c, id, data, updated_at: new Date().toISOString() });
+          if (error) throw mapErr(error); put(c, id, data);
+        },
+        async update(patch) {
+          const { error } = await sb.rpc("doc_fusion", { p_coll: c, p_id: id, p_patch: patch });
+          if (error) throw mapErr(error);
+          const cur = (store.get(c) || new Map()).get(id); if (cur) put(c, id, { ...cur, ...patch });
+        },
+        async delete() {
+          const { error } = await sb.from("documents").delete().eq("coll", c).eq("id", id);
+          if (error) throw mapErr(error); put(c, id, undefined);
+        },
+        onSnapshot(next) {
+          const k = c + "/" + id; if (!docL.has(k)) docL.set(k, new Set()); docL.get(k).add(next);
+          setTimeout(() => next(docSnap(c, id)), 0);
+          return () => docL.get(k).delete(next);
+        }
+      };
+    },
+    collection(c) {
+      return {
+        path: c,
+        doc: id => db.doc(c + "/" + id),
+        onSnapshot(next) {
+          if (!collL.has(c)) collL.set(c, new Set()); collL.get(c).add(next);
+          setTimeout(() => emitColl(c), 0);
+          return () => collL.get(c).delete(next);
+        }
+      };
+    }
+  });
+
+  const user = Object.freeze({
+    isOwner: async () => role === "coordo",
+    canEdit: async () => role === "coordo",
+    can: async n => (n === "data.write" ? true : null),
+    id: async () => uid,
+    me: async () => ({ id: uid, name: "", isOwner: role === "coordo", canEdit: role === "coordo" })
+  });
+
+  const assets = Object.freeze({
+    async upload(blob) {
+      const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + "." + ext;
+      const { error } = await sb.storage.from("photos").upload(id, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+      if (error) throw mapErr(error);
+      const url = sb.storage.from("photos").getPublicUrl(id).data.publicUrl;
+      return { id, url, sizeBytes: blob.size, contentType: blob.type };
+    },
+    async delete(id) { await sb.storage.from("photos").remove([id]); },
+    async list() { const { data } = await sb.storage.from("photos").list(); return { assets: data || [], usage: {} }; }
+  });
+
+  const downloads = Object.freeze({
+    async save({ filename, data }) {
+      const blob = data instanceof Blob ? data : new Blob([data]);
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
+      document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      return { saved: true };
+    }
+  });
+
+  const caps = { db, user, assets, downloads };
+  window.claude = Object.freeze({ use: name => ready.then(() => caps[name] || null) });
+
+  /* ---------- Outils pour l'écran « Accès et appareils » ---------- */
+  function inviteLink(code) { return location.origin + location.pathname + "?code=" + encodeURIComponent(code); }
+  function qrSvg(text) {
+    if (typeof qrcode !== "function") return "";
+    const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+  }
+  window.SKB = Object.freeze({
+    get role() { return role; },
+    get url() { return sbUrl; },
+    async newCode(r) { const { data, error } = await sb.rpc("creer_code", { p_role: r }); if (error) throw mapErr(error); return data; },
+    async disableCodes(r) { const { error } = await sb.rpc("desactiver_codes", { p_role: r }); if (error) throw mapErr(error); },
+    async removeTeam() { const { error } = await sb.rpc("retirer_equipe"); if (error) throw mapErr(error); },
+    inviteLink, qrSvg, logout
+  });
+
+  /* ---------- Démarrage ---------- */
+  if (!sbUrl || !sbKey || !window.supabase) { screenSetup(!window.supabase ? "La bibliothèque Supabase n'a pas pu se charger : vérifie la connexion internet." : ""); return; }
+  try { sb = window.supabase.createClient(sbUrl, sbKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }); }
+  catch (e) { screenSetup("Adresse ou clé invalide."); return; }
+  sb.auth.getSession().then(({ data }) => { if (data.session) enter(); else screenLogin(); });
+  sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT" && role) { LS.del("role"); location.reload(); } });
+})();
