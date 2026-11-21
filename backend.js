@@ -13,21 +13,44 @@
     del(k) { try { localStorage.removeItem("skb:" + k); } catch (e) {} }
   };
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  /* ---------- Plusieurs CAARUD sur le même appareil ----------
+     Chaque base a ses propres clés locales (rôle, cache, file d'attente hors ligne…). */
+  const refOf = u => { const m = /^https:\/\/([a-z0-9-]+)\.supabase\.co/i.exec(u || ""); return m ? m[1].toLowerCase() : String(u || "").replace(/[^a-z0-9]/gi, "").slice(-24); };
+  const lsKeys = p => { const o = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(p)) o.push(k); } } catch (e) {} return o; };
+  const lsDrop = p => lsKeys(p).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  function addBase(u, k, n) {
+    const r = refOf(u); if (!r) return;
+    const L = LS.get("bases", []), e = L.find(x => refOf(x.u) === r);
+    if (e) { e.u = u; e.k = k; if (n) e.n = n; } else L.push({ u, k, n: n || "" });
+    LS.set("bases", L);
+  }
+  if (LS.get("bases", null) === null) {
+    const u0 = LS.get("url", "") || CFG.supabaseUrl || "", r0 = refOf(u0);
+    LS.set("bases", []);
+    if (r0) {
+      ["role", "uid", "cache"].forEach(k => { const v = LS.get(k, null); if (v !== null) LS.set(r0 + ":" + k, v); LS.del(k); });
+      lsKeys("stk:").forEach(k => { try { localStorage.setItem("stk@" + r0 + ":" + k.slice(4), localStorage.getItem(k)); localStorage.removeItem(k); } catch (e) {} });
+      addBase(u0, LS.get("key", "") || CFG.supabaseKey || "");
+    }
+  }
   const params = new URLSearchParams(location.search);
   const urlCode = (params.get("code") || "").trim().toUpperCase();
   // La base du CAARUD voyage dans le lien d'invitation : ?b=<projet>&k=<clé publique>
   const pB = (params.get("b") || "").trim(), pK = (params.get("k") || "").trim();
   if (pB && pK) {
     const u = /^https:\/\//.test(pB) ? pB.replace(/\/+$/, "") : "https://" + pB.replace(/[^a-z0-9-]/gi, "") + ".supabase.co";
-    if (LS.get("url", "") !== u) { LS.del("role"); LS.del("uid"); LS.del("cache"); }
-    LS.set("url", u); LS.set("key", pK);
+    LS.set("url", u); LS.set("key", pK); addBase(u, pK);
   }
-  if (urlCode) LS.set("pendingCode", urlCode);
+  if (urlCode) { LS.set("pendingCode", urlCode); LS.set("pendingFor", refOf(LS.get("url", "") || CFG.supabaseUrl || "")); }
   if (urlCode || pB || pK) history.replaceState(null, "", location.pathname + location.hash);
 
   let sbUrl = LS.get("url", "") || CFG.supabaseUrl || "";
   let sbKey = (LS.get("url", "") ? LS.get("key", "") : "") || CFG.supabaseKey || "";
-  let sb = null, uid = null, role = LS.get("role", null), synced = false;
+  const base = refOf(sbUrl);
+  if (base) addBase(sbUrl, sbKey);
+  window.STK_NS = base ? "stk@" + base + ":" : "stk:";
+  const BK = { get: (k, d) => LS.get(base + ":" + k, d), set: (k, v) => LS.set(base + ":" + k, v), del: k => LS.del(base + ":" + k) };
+  let sb = null, uid = null, role = BK.get("role", null), synced = false;
 
   /* ---------- Écran de connexion ---------- */
   const OV_STYLE = `
@@ -90,7 +113,7 @@
     $("#sAcc").onclick = () => {
       const k = $("#sK").value.trim(), ref = refFromKey(k), u = ref ? "https://" + ref + ".supabase.co" : $("#sU").value.trim().replace(/\/+$/, "");
       if (!/^https:\/\/.+/.test(u) || k.length < 20) { $("#sE").textContent = "Colle d'abord la clé anon de ta base (étape 4)."; return; }
-      LS.set("url", u); LS.set("key", k); location.reload();
+      LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
     };
     $("#sGo").onclick = async () => {
       const k = $("#sK").value.trim(), ref = refFromKey(k), code = $("#sC").value.trim().toUpperCase(), b = $("#sGo");
@@ -106,13 +129,13 @@
         const j = await c.rpc("rejoindre", { p_code: code });
         if (j.error) { busy(b, false); $("#sE").textContent = /function|rejoindre/i.test(j.error.message) ? "Les tables ne sont pas installées : fais l'étape 2, puis réessaie." : netMsg(j.error); await c.auth.signOut(); return; }
         if (j.data !== "coordo") { busy(b, false); $("#sE").textContent = "Ce code d'installation n'est pas valide. Relance le script pour en obtenir un nouveau."; await c.auth.signOut(); return; }
-        LS.set("url", u); LS.set("key", k); location.reload();
+        LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
       } catch (e) { busy(b, false); $("#sE").textContent = netMsg(e); }
     };
   }
 
   function screenLogin(msg) {
-    const pc = LS.get("pendingCode", "");
+    const pc = LS.get("pendingFor", base) === base ? LS.get("pendingCode", "") : "";
     show(`<div class="card"><h2>Je fais partie de l'équipe</h2><p>Entre le code donné par ton responsable stock, ou scanne son QR code. Ça marche aussi avec un code de responsable stock.</p>
       <input id="tC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters" inputmode="text" value="${esc(pc)}" aria-label="Code d'équipe">
       <div class="err" id="tE">${esc(msg || "")}</div><button class="btn primary big" id="tGo">Rejoindre l'équipe</button></div>
@@ -196,29 +219,57 @@
       const { data, error } = await sb.rpc("mon_role"); if (error) throw error; r = data;
       if (!r && !anon) { const p = await sb.rpc("premier_coordo"); if (p.data) r = "coordo"; }
     } catch (e) {
-      if (role && LS.get("uid", null) === uid) r = role; // hors ligne : on garde le dernier rôle connu
+      if (role && BK.get("uid", null) === uid) r = role; // hors ligne : on garde le dernier rôle connu
       else { screenLogin(netMsg(e)); return; }
     }
     if (!r) { if (anon) { await sb.auth.signOut(); screenLogin("Cet appareil n'a plus accès. Demande un nouveau code au responsable stock."); } else screenCoordoCode(); return; }
-    role = r; LS.set("role", r); LS.set("uid", uid);
+    role = r; BK.set("role", r); BK.set("uid", uid);
     if (ov) hide();
     startSync();
     resolveReady(true);
   }
+  function forgetLocal(r) {
+    lsDrop("skb:" + r + ":"); lsDrop("stk@" + r + ":"); lsDrop("sb-" + r + "-auth-token");
+    LS.set("bases", LS.get("bases", []).filter(x => refOf(x.u) !== r));
+  }
+  function bases() {
+    return LS.get("bases", []).map(x => {
+      const r = refOf(x.u); let pend = 0;
+      try { const q = JSON.parse(localStorage.getItem("stk@" + r + ":queue") || "[]"); pend = Array.isArray(q) ? q.length : 0; } catch (e) {}
+      return { ref: r, nom: x.n || "", cur: r === base, pend };
+    });
+  }
+  function switchBase(r) {
+    const e = LS.get("bases", []).find(x => refOf(x.u) === r); if (!e || r === base) return;
+    LS.set("url", e.u); LS.set("key", e.k); location.reload();
+  }
+  function addLink(text) {
+    let u; try { u = new URL(String(text || "").trim()); } catch (e) { return "Ce n'est pas un lien. Copie le lien d'invitation en entier."; }
+    const b = (u.searchParams.get("b") || "").trim(), k = (u.searchParams.get("k") || "").trim(), c = (u.searchParams.get("code") || "").trim().toUpperCase();
+    if (!b || !k) return "Ce lien n'est pas un lien d'invitation Stockaarud.";
+    const url = /^https:\/\//.test(b) ? b.replace(/\/+$/, "") : "https://" + b.replace(/[^a-z0-9-]/gi, "") + ".supabase.co";
+    LS.set("url", url); LS.set("key", k); addBase(url, k); if (c) { LS.set("pendingCode", c); LS.set("pendingFor", refOf(url)); }
+    location.reload(); return "";
+  }
+  function setName(n) {
+    n = String(n || "").trim(); const L = LS.get("bases", []), e = L.find(x => refOf(x.u) === base);
+    if (e && n && e.n !== n) { e.n = n; LS.set("bases", L); }
+  }
   async function logout() {
     try { await sb.auth.signOut(); } catch (e) {}
-    LS.del("role"); LS.del("uid"); LS.del("cache");
-    try { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith("stk:")) localStorage.removeItem(k); } } catch (e) {}
+    forgetLocal(base);
+    const next = LS.get("bases", [])[0];
+    if (next) { LS.set("url", next.u); LS.set("key", next.k); }
     location.reload();
   }
 
   /* ---------- Base de données (même interface que sur claude.ai) ---------- */
   const store = new Map();
-  const cached = LS.get("cache", null);
+  const cached = BK.get("cache", null);
   if (cached && typeof cached === "object") for (const c in cached) store.set(c, new Map(Object.entries(cached[c])));
   const collL = new Map(), docL = new Map();
   let saveT = 0;
-  function saveCache() { clearTimeout(saveT); saveT = setTimeout(() => { const o = {}; for (const [c, m] of store) o[c] = Object.fromEntries(m); LS.set("cache", o); }, 400); }
+  function saveCache() { clearTimeout(saveT); saveT = setTimeout(() => { const o = {}; for (const [c, m] of store) o[c] = Object.fromEntries(m); BK.set("cache", o); }, 400); }
   const meta = () => ({ fromCache: !synced, hasPendingWrites: false });
   function docSnap(c, id) { const m = store.get(c), d = m && m.get(id); return { id, exists: d !== undefined, data: () => d, metadata: meta() }; }
   function emitColl(c) {
@@ -352,7 +403,9 @@
     async disableCodes(r) { const { error } = await sb.rpc("desactiver_codes", { p_role: r }); if (error) throw mapErr(error); },
     async removeTeam() { const { error } = await sb.rpc("retirer_equipe"); if (error) throw mapErr(error); },
     async removeGest() { const { error } = await sb.rpc("retirer_gestion_par_code"); if (error) throw mapErr(error); },
-    inviteLink, qrSvg, logout
+    inviteLink, qrSvg, logout,
+    bases, switchBase, addLink, setName,
+    forget(r) { if (r === base) logout(); else forgetLocal(r); }
   });
 
   /* ---------- Démarrage ---------- */
@@ -360,5 +413,5 @@
   try { sb = window.supabase.createClient(sbUrl, sbKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }); }
   catch (e) { screenSetup("Adresse ou clé invalide."); return; }
   sb.auth.getSession().then(({ data }) => { if (data.session) enter(); else screenLogin(); });
-  sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT" && role) { LS.del("role"); location.reload(); } });
+  sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT" && role) { BK.del("role"); location.reload(); } });
 })();
