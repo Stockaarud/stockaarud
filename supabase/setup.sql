@@ -68,8 +68,7 @@ begin
   if auth.uid() is null then return null; end if;
   select role into r from public.codes_acces where code = upper(trim(p_code)) and actif;
   if r is null then return null; end if;
-  -- un code coordo exige un vrai compte (pas un appareil anonyme)
-  if r = 'coordo' and coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then return null; end if;
+  -- un code « responsable stock » (rôle coordo) marche aussi sur un appareil sans compte
   insert into public.membres (user_id, role) values (auth.uid(), r)
     on conflict (user_id) do update set role =
       case when public.membres.role = 'coordo' then 'coordo' else excluded.role end;
@@ -83,7 +82,8 @@ declare c text;
 begin
   if not public.est_coordo() then raise exception 'reserve au coordo'; end if;
   if p_role not in ('coordo', 'equipe') then raise exception 'role inconnu'; end if;
-  c := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6));
+  -- code d'équipe : 6 caractères ; code de responsable stock : 10, car il donne accès à la gestion
+  c := upper(substr(md5(random()::text || clock_timestamp()::text), 1, case when p_role = 'coordo' then 10 else 6 end));
   insert into public.codes_acces (code, role) values (c, p_role);
   return c;
 end $$;
@@ -102,6 +102,16 @@ begin
   if not public.est_coordo() then raise exception 'reserve au coordo'; end if;
   delete from public.membres where role = 'equipe';
   update public.codes_acces set actif = false where role = 'equipe';
+end $$;
+
+-- Retirer les responsables stock connectés par code (appareils sans compte), sauf l'appelant.
+create or replace function public.retirer_gestion_par_code() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.est_coordo() then raise exception 'reserve au responsable stock'; end if;
+  delete from public.membres m using auth.users u
+    where m.user_id = u.id and m.role = 'coordo' and u.is_anonymous and m.user_id <> auth.uid();
+  update public.codes_acces set actif = false where role = 'coordo';
 end $$;
 
 -- Mise à jour partielle d'un document (fusion des champs), avec les droits de l'appelant.
@@ -147,10 +157,10 @@ grant select on public.membres, public.codes_acces to authenticated;
 revoke all on public.documents, public.membres, public.codes_acces from anon;
 
 revoke execute on function public.est_membre, public.est_coordo, public.mon_role, public.premier_coordo,
-  public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.doc_fusion
+  public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.retirer_gestion_par_code, public.doc_fusion
   from public, anon;
 grant execute on function public.est_membre, public.est_coordo, public.mon_role, public.premier_coordo,
-  public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.doc_fusion
+  public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.retirer_gestion_par_code, public.doc_fusion
   to authenticated;
 
 -- ---------- Temps réel ------------------------------------------------

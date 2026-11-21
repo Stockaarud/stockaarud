@@ -15,10 +15,18 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const params = new URLSearchParams(location.search);
   const urlCode = (params.get("code") || "").trim().toUpperCase();
-  if (urlCode) { LS.set("pendingCode", urlCode); history.replaceState(null, "", location.pathname + location.hash); }
+  // La base du CAARUD voyage dans le lien d'invitation : ?b=<projet>&k=<clé publique>
+  const pB = (params.get("b") || "").trim(), pK = (params.get("k") || "").trim();
+  if (pB && pK) {
+    const u = /^https:\/\//.test(pB) ? pB.replace(/\/+$/, "") : "https://" + pB.replace(/[^a-z0-9-]/gi, "") + ".supabase.co";
+    if (LS.get("url", "") !== u) { LS.del("role"); LS.del("uid"); LS.del("cache"); }
+    LS.set("url", u); LS.set("key", pK);
+  }
+  if (urlCode) LS.set("pendingCode", urlCode);
+  if (urlCode || pB || pK) history.replaceState(null, "", location.pathname + location.hash);
 
-  let sbUrl = CFG.supabaseUrl || LS.get("url", "");
-  let sbKey = CFG.supabaseKey || LS.get("key", "");
+  let sbUrl = LS.get("url", "") || CFG.supabaseUrl || "";
+  let sbKey = (LS.get("url", "") ? LS.get("key", "") : "") || CFG.supabaseKey || "";
   let sb = null, uid = null, role = LS.get("role", null), synced = false;
 
   /* ---------- Écran de connexion ---------- */
@@ -47,7 +55,8 @@
   function busy(btn, on) { if (btn) { btn.disabled = on; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = on ? "Un instant…" : btn.dataset.t; } }
 
   function screenSetup(msg) {
-    show(`<div class="card"><h2>Brancher la base de données</h2><p>Indique l'adresse et la clé publique du projet Supabase de ta structure (Supabase › Project Settings › API). Le guide d'installation explique où les trouver.</p>
+    show(`<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
+      <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit. <a href="https://github.com/Stockaarud/stockaarud#readme" target="_blank" rel="noopener">Le guide d'installation</a> explique comment la créer (10 minutes). Colle ensuite ici son adresse et sa clé publique (Supabase › Project Settings › API).</p>
       <label>Adresse du projet<input id="sU" placeholder="https://xxxx.supabase.co" value="${esc(sbUrl)}" autocomplete="off"></label>
       <label>Clé publique (anon / publishable)<input id="sK" value="${esc(sbKey)}" autocomplete="off"></label>
       <div class="err" id="sE">${esc(msg || "")}</div><button class="btn primary big" id="sGo">Enregistrer</button></div>`);
@@ -60,28 +69,28 @@
 
   function screenLogin(msg) {
     const pc = LS.get("pendingCode", "");
-    show(`<div class="card"><h2>Je fais partie de l'équipe</h2><p>Entre le code donné par le coordo (ou scanne son QR code).</p>
-      <input id="tC" class="code" maxlength="6" autocomplete="off" autocapitalize="characters" inputmode="text" value="${esc(pc)}" aria-label="Code d'équipe">
+    show(`<div class="card"><h2>Je fais partie de l'équipe</h2><p>Entre le code donné par ton responsable stock, ou scanne son QR code. Ça marche aussi avec un code de responsable stock.</p>
+      <input id="tC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters" inputmode="text" value="${esc(pc)}" aria-label="Code d'équipe">
       <div class="err" id="tE">${esc(msg || "")}</div><button class="btn primary big" id="tGo">Rejoindre l'équipe</button></div>
-      <div class="card"><h2>Je suis coordo</h2>
+      <div class="card"><h2>Responsable stock avec un compte</h2>
       <label>Adresse e-mail<input id="cM" type="email" autocomplete="username"></label>
       <label>Mot de passe<input id="cP" type="password" autocomplete="current-password"></label>
       <div class="err" id="cE"></div><button class="btn big" id="cGo">Se connecter</button>
-      <button class="alt" id="cNew">Première installation : créer le compte coordo</button></div>
+      <button class="alt" id="cNew">Première installation : créer le compte responsable stock</button></div>
       <button class="alt" id="cfg">Changer de base de données</button>`);
     $("#tC").onkeydown = e => { if (e.key === "Enter") $("#tGo").click(); };
     $("#cP").onkeydown = e => { if (e.key === "Enter") $("#cGo").click(); };
     $("#cfg").onclick = () => screenSetup();
     $("#tGo").onclick = async () => {
       const code = $("#tC").value.trim().toUpperCase(), b = $("#tGo");
-      if (code.length < 4) { $("#tE").textContent = "Entre le code à 6 caractères."; return; }
+      if (code.length < 4) { $("#tE").textContent = "Entre le code (6 ou 10 caractères)."; return; }
       busy(b, true);
       try {
         let { data: s } = await sb.auth.getSession();
         if (!s.session) { const r = await sb.auth.signInAnonymously(); if (r.error) throw r.error; }
         const { data, error } = await sb.rpc("rejoindre", { p_code: code });
         if (error) throw error;
-        if (!data) { busy(b, false); $("#tE").textContent = "Code inconnu ou désactivé. Demande un nouveau code au coordo."; return; }
+        if (!data) { busy(b, false); $("#tE").textContent = "Code inconnu ou désactivé. Demande un nouveau code au responsable stock."; return; }
         LS.del("pendingCode"); await enter();
       } catch (e) { busy(b, false); $("#tE").textContent = netMsg(e, "La connexion a échoué. Vérifie que les connexions anonymes sont activées dans Supabase."); }
     };
@@ -95,7 +104,7 @@
   }
 
   function screenSignup() {
-    show(`<div class="card"><h2>Créer le compte coordo</h2><p>Le premier compte créé devient coordo. Les suivants auront besoin d'un code coordo.</p>
+    show(`<div class="card"><h2>Créer le compte responsable stock</h2><p>Le premier compte créé gère le stock. Il sert aussi de compte de secours : garde bien le mot de passe. Les autres responsables stock n'ont pas besoin de compte : tu leur donneras un code.</p>
       <label>Adresse e-mail<input id="nM" type="email" autocomplete="username"></label>
       <label>Mot de passe (8 caractères ou plus)<input id="nP" type="password" autocomplete="new-password"></label>
       <div class="err" id="nE"></div><button class="btn primary big" id="nGo">Créer le compte</button>
@@ -113,13 +122,13 @@
   }
 
   function screenCoordoCode() {
-    show(`<div class="card"><h2>Code coordo</h2><p>Un compte coordo existe déjà. Demande-lui un code « coordo » (Réglages › Accès et appareils).</p>
-      <input id="kC" class="code" maxlength="6" autocomplete="off" autocapitalize="characters" aria-label="Code coordo">
+    show(`<div class="card"><h2>Code responsable stock</h2><p>Stockaarud est déjà installé pour ce CAARUD. Demande un code de responsable stock (Réglages › Accès et appareils).</p>
+      <input id="kC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters" aria-label="Code responsable stock">
       <div class="err" id="kE"></div><button class="btn primary big" id="kGo">Valider</button><button class="alt" id="kOut">Se déconnecter</button></div>`);
     $("#kOut").onclick = () => logout();
     $("#kGo").onclick = async () => {
       const { data, error } = await sb.rpc("rejoindre", { p_code: $("#kC").value.trim().toUpperCase() });
-      if (error || data !== "coordo") { $("#kE").textContent = error ? netMsg(error) : "Ce code n'est pas un code coordo valide."; return; }
+      if (error || data !== "coordo") { $("#kE").textContent = error ? netMsg(error) : "Ce code n'est pas un code de responsable stock valide."; return; }
       await enter();
     };
   }
@@ -145,7 +154,7 @@
       if (role && LS.get("uid", null) === uid) r = role; // hors ligne : on garde le dernier rôle connu
       else { screenLogin(netMsg(e)); return; }
     }
-    if (!r) { if (anon) { await sb.auth.signOut(); screenLogin("Cet appareil n'a plus accès. Demande un nouveau code au coordo."); } else screenCoordoCode(); return; }
+    if (!r) { if (anon) { await sb.auth.signOut(); screenLogin("Cet appareil n'a plus accès. Demande un nouveau code au responsable stock."); } else screenCoordoCode(); return; }
     role = r; LS.set("role", r); LS.set("uid", uid);
     if (ov) hide();
     startSync();
@@ -283,7 +292,10 @@
   window.claude = Object.freeze({ use: name => ready.then(() => caps[name] || null) });
 
   /* ---------- Outils pour l'écran « Accès et appareils » ---------- */
-  function inviteLink(code) { return location.origin + location.pathname + "?code=" + encodeURIComponent(code); }
+  function inviteLink(code) {
+    const m = /^https:\/\/([a-z0-9-]+)\.supabase\.co$/i.exec(sbUrl);
+    return location.origin + location.pathname + "?b=" + encodeURIComponent(m ? m[1] : sbUrl) + "&k=" + encodeURIComponent(sbKey) + (code ? "&code=" + encodeURIComponent(code) : "");
+  }
   function qrSvg(text) {
     if (typeof qrcode !== "function") return "";
     const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
@@ -294,6 +306,7 @@
     async newCode(r) { const { data, error } = await sb.rpc("creer_code", { p_role: r }); if (error) throw mapErr(error); return data; },
     async disableCodes(r) { const { error } = await sb.rpc("desactiver_codes", { p_role: r }); if (error) throw mapErr(error); },
     async removeTeam() { const { error } = await sb.rpc("retirer_equipe"); if (error) throw mapErr(error); },
+    async removeGest() { const { error } = await sb.rpc("retirer_gestion_par_code"); if (error) throw mapErr(error); },
     inviteLink, qrSvg, logout
   });
 

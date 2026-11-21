@@ -630,7 +630,7 @@ function draw(){
   if(S.view==="coordo"&&!coordoOK())S.view="equipe";
   const canC=S.isAdmin||!S.db;
   $("#hdrBtn").innerHTML=S.view==="coordo"?'<button class="hbtn" data-act="view" data-v="equipe"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Équipe</button>'
-    :(canC?'<button class="hbtn" data-act="goCoordo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>Coordo</button>':'');
+    :(canC?'<button class="hbtn" data-act="goCoordo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>Gestion</button>':'');
   const st=computeStats();
   const keepX={};document.querySelectorAll(".subnav,.tw").forEach((el,i)=>{keepX[(el.className)+i]=el.scrollLeft});
   const key=S.view+"/"+S.ctab;if(key!==draw.last){draw.last=key;const a=$("#app");a.classList.remove("swap");void a.offsetWidth;a.classList.add("swap");clearTimeout(draw.t);draw.t=setTimeout(()=>a.classList.remove("swap"),600)}
@@ -707,13 +707,13 @@ function viewEquipe(st){
   if(!S.lieu||!L.find(l=>l.id===S.lieu))S.lieu=(principal()||{}).id;
   let h=dbBanner();
   if((S.dbState==="loading"||S.dbState==="slow")&&!S.produits.size)return h+'<div class="label" style="color:var(--muted);font-weight:400">Chargement du stock…</div><div class="grid">'+'<div class="skel"></div>'.repeat(6)+'</div>';
-  if(!S.config&&S.dbState==="ok")h+='<div class="empty">Stockaarud n\'est pas encore configuré. Le coordo ajoute les activités et le matériel dans l\'espace Coordo, puis l\'équipe peut saisir ses sorties ici.'+(S.isAdmin?'<button class="btn primary" style="margin-top:10px" data-act="wzStart">Lancer l\'installation guidée</button>':'')+'</div>';
+  if(!S.config&&S.dbState==="ok")h+='<div class="empty">Stockaarud n\'est pas encore configuré. Le responsable stock ajoute les activités et le matériel dans l\'espace gestion, puis l\'équipe peut saisir ses sorties ici.'+(S.isAdmin?'<button class="btn primary" style="margin-top:10px" data-act="wzStart">Lancer l\'installation guidée</button>':'')+'</div>';
   if(L.length>1)h+='<div class="label">Où es-tu ?</div><div class="chips">'+L.map(l=>'<button class="chip lieuchip" data-act="lieu" data-id="'+l.id+'" aria-pressed="'+(S.lieu===l.id)+'"><span>'+esc(l.nom)+'<small>'+lieuKind(l)+'</small></span></button>').join("")+'</div><p class="note" style="margin-top:6px">Le matériel est pris dans ce stock. Ce téléphone s\'en souvient.</p>';
   h+='<div class="label"><span class="stepn">1</span>Pour quoi ?</div><div class="chips">'+acts.map(a=>'<button class="chip" data-act="activite" data-id="'+a.id+'" aria-pressed="'+(S.activite===a.id)+'">'+actIcon(a)+esc(a.nom)+'</button>').join("")
     +'<button class="chip ghost" data-act="activite" data-id="__dep" aria-pressed="'+(S.activite==="__dep")+'">Prêt / don à une asso</button>'
     +(L.length>1?'<button class="chip ghost" data-act="activite" data-id="__trans" aria-pressed="'+(S.activite==="__trans")+'">Vers un autre lieu</button>':"")
     +'<button class="chip ghost" data-act="activite" data-id="__perte" aria-pressed="'+(S.activite==="__perte")+'">Perte / casse</button></div>';
-  if(!acts.length&&S.config)h+='<p class="note">Aucune activité pour l\'instant : le coordo les crée dans Réglages.</p>';
+  if(!acts.length&&S.config)h+='<p class="note">Aucune activité pour l\'instant : le responsable stock les crée dans Réglages.</p>';
   // tri : les plus sortis pour cette activité d'abord
   const freq={};for(const m of S.mvts)if(m.type==="sortie"&&m.activite===S.activite)freq[m.produit]=(freq[m.produit]||0)+1;
   let ps=prodsActifs().filter(p=>matches(p,S.query));
@@ -739,8 +739,8 @@ function viewEquipe(st){
   if(window.SKB&&!S.isAdmin)h+='<p class="note" style="text-align:center;margin-top:24px">Appareil connecté à l\'équipe. <button class="link" data-act="skbLogout">Déconnecter cet appareil</button></p>';
   const prets=allMvts().filter(m=>m.type==="depannage"&&m.aRendre&&!m.rendu);
   if(prets.length)h+='<details class="panel" style="margin-top:16px"><summary><b>Prêts en cours ('+prets.length+')</b> <span class="note">· touche « Rendu » quand l\'asso rend le matériel</span></summary><div class="list" style="margin-top:6px">'+prets.map(m=>{const p=S.produits.get(m.produit)||{nom:"?"};return '<div class="it"><span style="flex:1;min-width:150px"><b>'+esc(p.nom)+'</b> · '+esc(fmtQ(p,m.qte))+'<br><span class="note">'+esc(assoNom(m))+', le '+fmtDate(m.t)+'</span></span><button class="btn small" data-act="rendu" data-id="'+m.id+'">Rendu</button></div>'}).join("")+'</div></details>';
-  if(S.query.trim().length>=2&&!ps.length)h+='<div class="empty">Rien trouvé pour « '+esc(S.query)+' ».<br><button class="btn" style="margin-top:10px" data-act="signal">Signaler au coordo</button></div>';
-  else if(!prodsActifs().length&&S.config)h+='<div class="empty">Le catalogue est vide : le coordo active le matériel dans Réglages.</div>';
+  if(S.query.trim().length>=2&&!ps.length)h+='<div class="empty">Rien trouvé pour « '+esc(S.query)+' ».<br><button class="btn" style="margin-top:10px" data-act="signal">Signaler au responsable stock</button></div>';
+  else if(!prodsActifs().length&&S.config)h+='<div class="empty">Le catalogue est vide : le responsable stock active le matériel dans Réglages.</div>';
   return h;
 }
 
@@ -841,10 +841,10 @@ function sha256js(str){const K=[],H=[];let n=2;const isP=x=>{for(let i=2;i*i<=x;
 async function sha(t){try{if(crypto&&crypto.subtle){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}}catch(e){}return sha256js(t)}
 function coordoOK(){if(!S.db)return true;if(!S.isAdmin)return false;if(!S.secretLoaded)return false;if(!S.secret||!S.secret.hash)return true;return (ls.get("coordoKey",null)||S.unlockKey)===S.secret.hash}
 function goCoordo(){
-  if(S.db&&!S.isAdmin){toast(window.SKB?"Cet appareil est connecté en équipe. Pour l'espace coordo, déconnecte-le (en bas de l'écran) puis connecte-toi avec le compte coordo.":"L'espace coordo est réservé au compte du coordo.");return}
+  if(S.db&&!S.isAdmin){toast(window.SKB?"Cet appareil est connecté en équipe. Pour l'espace gestion, déconnecte-le (en bas de l'écran) puis connecte-toi avec un compte responsable stock.":"L'espace gestion est réservé aux responsables stock.");return}
   if(S.db&&!S.secretLoaded){toast("Un instant, chargement…");return}
   if(coordoOK()){S.view="coordo";ls.set("view","coordo");render();return}
-  $("#layer").innerHTML='<div class="sheet-back enter" data-act="closeLayer"><div class="sheet" role="dialog" aria-modal="true" aria-label="Code coordo"><form class="codebox" id="codeForm"><h2>Espace coordo</h2><p class="note" style="margin:0">Entre le code coordo. Il sera retenu sur cet appareil.</p><input id="codeIn" type="password" inputmode="numeric" autocomplete="off" maxlength="8" aria-label="Code"><div class="err" id="codeErr"></div><button class="btn primary big" type="submit">Ouvrir</button><button class="btn big" type="button" data-act="closeLayer">Annuler</button></form></div></div>';
+  $("#layer").innerHTML='<div class="sheet-back enter" data-act="closeLayer"><div class="sheet" role="dialog" aria-modal="true" aria-label="Code de l\'espace gestion"><form class="codebox" id="codeForm"><h2>Espace gestion</h2><p class="note" style="margin:0">Entre le code de l\'espace gestion. Il sera retenu sur cet appareil.</p><input id="codeIn" type="password" inputmode="numeric" autocomplete="off" maxlength="8" aria-label="Code"><div class="err" id="codeErr"></div><button class="btn primary big" type="submit">Ouvrir</button><button class="btn big" type="button" data-act="closeLayer">Annuler</button></form></div></div>';
   setTimeout(()=>{const i=$("#codeIn");if(i)i.focus()},50);
 }
 async function checkCode(){const v=val("codeIn").trim(),box=$("#codeForm");if(!v)return;const h=await sha(S.secret.salt+v);
@@ -931,15 +931,17 @@ async function wipeRun(kind){
 }
 function accesPanel(){
   if(!window.SKB)return "";
-  return '<div class="panel" style="margin-top:12px"><h2>Accès et appareils</h2><p class="note">L\'équipe rejoint Stockaarud avec un code ou en scannant un QR code, sans créer de compte. Les coordos se connectent avec leur e-mail.</p>'
-   +'<div class="row" style="margin-top:10px"><button class="btn primary" data-act="invite" data-v="equipe">Inviter l\'équipe</button><button class="btn" data-act="invite" data-v="coordo">Ajouter un coordo</button></div>'
+  return '<div class="panel" style="margin-top:12px"><h2>Accès et appareils</h2><p class="note">L\'équipe rejoint Stockaarud avec un code ou en scannant un QR code, sans créer de compte. Les responsables stock aussi : « Ajouter un responsable stock » donne un code de gestion à scanner. Le compte avec e-mail et mot de passe, créé à l\'installation, reste en secours.</p>'
+   +'<div class="row" style="margin-top:10px"><button class="btn primary" data-act="invite" data-v="equipe">Inviter l\'équipe</button><button class="btn" data-act="invite" data-v="coordo">Ajouter un responsable stock</button></div>'
    +'<div id="inviteBox"></div>'
    +'<div class="row" style="margin-top:12px"><button class="btn danger" data-act="removeTeam">Retirer l\'accès de toute l\'équipe</button><button class="btn" data-act="skbLogout">Se déconnecter de cet appareil</button></div>'
-   +'<p class="note" style="margin-top:8px">Un téléphone perdu ? « Retirer l\'accès de toute l\'équipe » déconnecte tous les appareils de l\'équipe ; il suffit ensuite de leur donner un nouveau code.</p></div>';
+   +'<p class="note" style="margin-top:8px">Un téléphone perdu ? « Retirer l\'accès de toute l\'équipe » déconnecte tous les appareils de l\'équipe ; il suffit ensuite de leur donner un nouveau code.</p>'
+   +'<div class="row" style="margin-top:12px"><button class="btn danger" data-act="removeGest">Retirer les responsables stock connectés par code</button></div>'
+   +'<p class="note" style="margin-top:8px">À utiliser si un responsable stock s\'en va ou perd son téléphone : ses appareils sont déconnectés et les anciens codes de gestion ne marchent plus. Les comptes avec e-mail et cet appareil-ci gardent l\'accès.</p></div>';
 }
 function codePanel(){
   const has=S.secret&&S.secret.hash;
-  return '<div class="panel" style="margin-top:12px"><h2>Accès coordo</h2><p class="note">L\'espace coordo est réservé '+(window.SKB?"aux comptes coordo. ":"aux comptes qui ont l\'accès Éditeur (menu Partager). ")+(has?'Un code le protège en plus sur les appareils partagés, comme la tablette du garage : il est demandé une fois par appareil.':'Tu peux ajouter un code, utile si un appareil partagé est connecté avec ton compte.')+'</p>'
+  return '<div class="panel" style="margin-top:12px"><h2>Accès à la gestion</h2><p class="note">L\'espace gestion est réservé '+(window.SKB?"aux responsables stock. ":"aux comptes qui ont l\'accès Éditeur (menu Partager). ")+(has?'Un code le protège en plus sur les appareils partagés, comme la tablette du garage : il est demandé une fois par appareil.':'Tu peux ajouter un code, utile si un appareil partagé est connecté avec ton compte.')+'</p>'
    +'<div class="form" style="margin-top:10px"><label>'+(has?"Nouveau code":"Code")+' (4 à 8 chiffres)<input id="ncode" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password"></label><label>Confirmer<input id="ncode2" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password"></label><button class="btn primary" data-act="setCode">'+(has?"Changer le code":"Définir le code")+'</button></div>'
    +(has?'<div class="row" style="margin-top:10px"><button class="btn" data-act="lockDevice">Verrouiller cet appareil</button><button class="btn danger" data-act="delCode">Supprimer le code</button></div>':'')+'</div>';
 }
@@ -1057,11 +1059,11 @@ async function fichePdf(link){
   doc.setFont("helvetica","bold");doc.setFontSize(20);doc.setTextColor(...K);doc.text("Le stock du CAARUD, dans ta poche",X,y);y+=11;
   h2("À quoi ça sert");
   p("Quand tu prends du matériel au "+n+" pour une activité (bus, local, maraude, festif...), tu le notes dans l'appli en quelques secondes. Plus de feuille à remplir.");
-  p("Le coordo voit le stock en temps réel, il est prévenu avant qu'un produit manque, et il prépare les commandes au bon moment.",{gap:6});
+  p("Le responsable stock voit le stock en temps réel, il est prévenu avant qu'un produit manque, et il prépare les commandes au bon moment.",{gap:6});
   h2("L'installer (une seule fois)");
   const qy=y;
   step(1,"Scanne le QR code","avec l'appareil photo du téléphone, ou ouvre le lien reçu par e-mail.");
-  step(2,window.SKB?"Touche « Je fais partie de l'équipe »":"Connecte-toi","" + (window.SKB?"Le code de ton équipe est déjà rempli. Pas de compte, pas de mot de passe.":"avec le compte Claude que le coordo a invité."));
+  step(2,window.SKB?"Touche « Je fais partie de l'équipe »":"Connecte-toi","" + (window.SKB?"Le code de ton équipe est déjà rempli. Pas de compte, pas de mot de passe.":"avec le compte Claude que le responsable stock a invité."));
   step(3,"Mets-la sur ton écran d'accueil","iPhone : Safari, bouton Partager, puis « Sur l'écran d'accueil ». Android : Chrome, menu (les 3 points), puis « Ajouter à l'écran d'accueil ».");
   // QR
   if(typeof qrcode==="function"){const q=qrcode(0,"M");q.addData(link);q.make();const c=q.getModuleCount(),size=64,cell=size/c,x0=X+(Wd-size)/2,y0=Math.max(y+6,qy+72);
@@ -1076,10 +1078,10 @@ async function fichePdf(link){
   step(3,"Combien ?","En unités, en boîtes ou en cartons : l'appli fait la conversion. Puis Valider.");
   y+=2;p("Pas besoin de compter au carton près : une estimation honnête suffit.",{c:M,s:11,gap:6});
   h2("Les autres cas");
-  const cas=[["Casse, perte, périmé","dans l'écran Combien, choisis « Perte / casse »."],["Prêt ou don à une autre asso","choisis « Prêt / don »."],["Une livraison arrive","en bas de l'écran, « Une livraison est arrivée ? », puis « Arrivé »."],["Un produit est épuisé","dans l'écran Combien, touche « Il n'y en a plus » : le coordo est prévenu."],["Tu t'es trompé","« Mes saisies d'aujourd'hui », puis « Annuler »."],["Pas de réseau","note quand même : tout part dès que le réseau revient."],["Un produit manque dans la liste","cherche-le, puis « Signaler au coordo »."]];
+  const cas=[["Casse, perte, périmé","dans l'écran Combien, choisis « Perte / casse »."],["Prêt ou don à une autre asso","choisis « Prêt / don »."],["Une livraison arrive","en bas de l'écran, « Une livraison est arrivée ? », puis « Arrivé »."],["Un produit est épuisé","dans l'écran Combien, touche « Il n'y en a plus » : le responsable stock est prévenu."],["Tu t'es trompé","« Mes saisies d'aujourd'hui », puis « Annuler »."],["Pas de réseau","note quand même : tout part dès que le réseau revient."],["Un produit manque dans la liste","cherche-le, puis « Signaler au responsable stock »."]];
   for(const [a,b] of cas){doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...K);doc.text("• "+a,X,y);y+=5.5;p(b,{x:X+4,w:Wd-4,c:M,s:11,gap:3})}
   y+=4;doc.setFillColor(242,245,243);doc.roundedRect(X,y,Wd,22,3,3,"F");doc.setFillColor(...Y);doc.rect(X,y,2.5,22,"F");
-  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...K);doc.text("Une question ?",X+7,y+8);doc.setFont("helvetica","normal");doc.setFontSize(11);doc.setTextColor(...M);doc.text("Demande au coordo. Tu ne peux rien casser : chaque saisie peut être corrigée.",X+7,y+15);
+  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...K);doc.text("Une question ?",X+7,y+8);doc.setFont("helvetica","normal");doc.setFontSize(11);doc.setTextColor(...M);doc.text("Demande au responsable stock. Tu ne peux rien casser : chaque saisie peut être corrigée.",X+7,y+15);
   return doc.output("blob");
 }
 
@@ -1403,7 +1405,7 @@ function svView(){const v=S.sv||"conso";return v==="repart"?svRepart():v==="prat
 function viewCoordo(st){
   const tabs=[["bord","Tableau de bord"],["cmd","Commandes"],["stats","Statistiques"],["prev","Prévisions"],["mvt","Mouvements"],["inv","Inventaire"],["reg","Réglages"]];
   let h=dbBanner();
-  if(!coordoOK())return h+'<div class="empty">L\'accès coordo est réservé au compte du coordo.</div>';
+  if(!coordoOK())return h+'<div class="empty">L\'espace gestion est réservé aux responsables stock.</div>';
   if(wizardNeeded())return h+viewWizard(st);
   h+='<nav class="subnav">'+tabs.map(([k,v])=>'<button data-act="ctab" data-v="'+k+'" aria-pressed="'+(S.ctab===k)+'">'+v+'</button>').join("")+'</nav>';
   if(S.ctab==="bord")h+=tabBord(st);
@@ -1990,8 +1992,9 @@ document.addEventListener("click",async e=>{
   case "view":S.view=b.dataset.v;ls.set("view",S.view);render();break;
   case "goCoordo":goCoordo();break;
   case "invite":{const r=b.dataset.v;try{const code=await window.SKB.newCode(r),link=window.SKB.inviteLink(code);
-    document.getElementById("inviteBox").innerHTML='<div class="invite"><div class="qr">'+window.SKB.qrSvg(link)+'</div><div><p style="margin:0">'+(r==="equipe"?"Code d\'équipe":"Code coordo")+'</p><p class="bigcode">'+esc(code)+'</p><p class="note" style="margin:0">'+(r==="equipe"?"À scanner avec l\'appareil photo, ou à taper dans « Je fais partie de l\'équipe ».":"La personne crée son compte avec son e-mail, puis entre ce code.")+'</p><button class="btn small" data-act="copyLink" data-v="'+esc(link)+'">Copier le lien</button></div></div>'}catch(err){toast("Impossible de créer le code : vérifie la connexion")}break}
+    document.getElementById("inviteBox").innerHTML='<div class="invite"><div class="qr">'+window.SKB.qrSvg(link)+'</div><div><p style="margin:0">'+(r==="equipe"?"Code d\'équipe":"Code responsable stock")+'</p><p class="bigcode">'+esc(code)+'</p><p class="note" style="margin:0">'+(r==="equipe"?"À scanner avec l\'appareil photo, ou à taper dans « Je fais partie de l\'équipe ».":"À scanner avec son téléphone, ou à taper dans « Je fais partie de l\'équipe ». Il donne accès à la gestion du stock, sans compte. Ne le donne qu\'aux responsables stock.")+'</p><button class="btn small" data-act="copyLink" data-v="'+esc(link)+'">Copier le lien</button></div></div>'}catch(err){toast("Impossible de créer le code : vérifie la connexion")}break}
   case "copyLink":try{await navigator.clipboard.writeText(b.dataset.v);toast("Lien copié")}catch(err){toast(b.dataset.v)}break;
+  case "removeGest":if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Confirmer : les responsables stock connectés par code seront déconnectés";break}try{await window.SKB.removeGest();toast("C'est fait. Donne un nouveau code aux responsables stock qui restent.")}catch(err){toast("Échec : vérifie la connexion")}render();break;
   case "removeTeam":if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Confirmer : tous les appareils de l'équipe seront déconnectés";break}try{await window.SKB.removeTeam();toast("Accès de l'équipe retiré. Donne un nouveau code aux appareils autorisés.")}catch(err){toast("Échec : vérifie la connexion")}render();break;
   case "skbLogout":if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Confirmer la déconnexion";break}window.SKB.logout();break;
   case "editMvt":openMvt(id);break;
@@ -2017,9 +2020,9 @@ document.addEventListener("click",async e=>{
   case "delCat":await saveConfig({categories:catsFromForm().filter(x=>x.id!==id)});toast("Catégorie retirée");break;
   case "saveCats":await saveConfig({categories:catsFromForm()});toast("Enregistré");break;
   case "setCode":{const a=val("ncode").trim(),c=val("ncode2").trim();if(!/^\d{4,8}$/.test(a)){toast("Le code doit faire 4 à 8 chiffres");break}if(a!==c){toast("Les deux codes ne correspondent pas");break}
-    const salt=uid()+uid(),hash=await sha(salt+a);await write("set","secret/coordo",{salt,hash,t:Date.now()});ls.set("coordoKey",hash);S.unlockKey=hash;S.secret={salt,hash};toast("Code coordo enregistré");render();break}
+    const salt=uid()+uid(),hash=await sha(salt+a);await write("set","secret/coordo",{salt,hash,t:Date.now()});ls.set("coordoKey",hash);S.unlockKey=hash;S.secret={salt,hash};toast("Code de l\'espace gestion enregistré");render();break}
   case "delCode":if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Confirmer la suppression";break}await write("delete","secret/coordo");S.secret=null;toast("Code supprimé");render();break;
-  case "lockDevice":try{localStorage.removeItem("stk:coordoKey")}catch(_){}S.unlockKey=null;S.view="equipe";ls.set("view","equipe");toast("Espace coordo verrouillé sur cet appareil");render();break;
+  case "lockDevice":try{localStorage.removeItem("stk:coordoKey")}catch(_){}S.unlockKey=null;S.view="equipe";ls.set("view","equipe");toast("Espace gestion verrouillé sur cet appareil");render();break;
   case "ctab":S.ctab=b.dataset.v;render();break;
   case "lieu":S.lieu=id;ls.set("lieu",id);render();break;
   case "activite":{S.activite=id;ls.set("activite",id);const a=cfg().activites.find(x=>x.id===id);if(a&&a.lieu&&lieux().some(l=>l.id===a.lieu)){S.lieu=a.lieu;ls.set("lieu",a.lieu)}render();break}
@@ -2037,7 +2040,7 @@ document.addEventListener("click",async e=>{
     mesDel(id);S.queue=S.queue.filter(o=>o.path!=="mouvements/"+id);ls.set("queue",S.queue);await write("delete","mouvements/"+id);toast("Saisie annulée : "+e.saisi+" · "+e.nom);render();break}
   case "pretDon":sheet.aRendre=b.dataset.v==="pret";drawSheet();break;
   case "valider":valider();break;
-  case "signal":await write("set","signalements/"+uid(),{t:Date.now(),texte:S.query.trim()});toast("Signalé au coordo");S.query="";render();break;
+  case "signal":await write("set","signalements/"+uid(),{t:Date.now(),texte:S.query.trim()});toast("Signalé au responsable stock");S.query="";render();break;
   case "delSig":await write("delete","signalements/"+id);break;
   case "commander":{const q=Math.round(num(val("cq-"+id)));if(q>0){const p=S.produits.get(id);await write("set","commandes/"+uid(),{t:Date.now(),produit:id,qte:q,recu:0,statut:"commandee",fournisseur:fournNom(p)});toast("Commande enregistrée")}break}
   case "ncAdd":{const p=S.produits.get(val("ncP")),q=num(val("ncQ"));if(!p||q<=0){toast("Indique une quantité");break}const u=val("ncM")==="carton"?q*(p.parCarton||1):q;await write("set","commandes/"+uid(),{t:Date.now(),produit:p.id,qte:Math.round(u),recu:0,statut:"commandee",fournisseur:fournNom(p)});toast("Commande enregistrée");break}
@@ -2101,7 +2104,7 @@ document.addEventListener("click",async e=>{
   case "svBudget":await saveConfig({budget:Math.max(0,num(val("svB"),0))});toast("Budget enregistré");break;
   case "bilanPdf":{const t0=b.innerHTML;b.disabled=true;try{await bilanPdf()}catch(err){toast("Impression impossible (connexion ?)")}finally{if(b.isConnected){b.disabled=false;b.innerHTML=t0}}break}
   case "rupture":{const p=sheet&&sheet.p;if(!p)break;const id=uid(),m={t:Date.now(),type:"rupture",produit:p.id,lieu:S.lieu||(principal()||{}).id};if(S.activite&&!S.activite.startsWith("__"))m.activite=S.activite;
-    closeSheet();await write("set","mouvements/"+id,m);mesAdd({id,t:m.t,prod:p.id,nom:p.nom,saisi:"plus rien",dest:"Rupture signalée"});toast("Rupture signalée au coordo : "+p.nom);render();break}
+    closeSheet();await write("set","mouvements/"+id,m);mesAdd({id,t:m.t,prod:p.id,nom:p.nom,saisi:"plus rien",dest:"Rupture signalée"});toast("Rupture signalée au responsable stock : "+p.nom);render();break}
   case "invMode":S.invMode=b.dataset.v;render();break;
   case "goInv":S.view="coordo";S.ctab="inv";S.invMode="rapide";window.scrollTo(0,0);render();break;
   case "invRapideOk":{const n=await saveInvRapide();if(n){S.invMode="guide";window.scrollTo(0,0);render()}break}

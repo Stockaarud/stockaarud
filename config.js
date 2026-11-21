@@ -1,6 +1,8 @@
-/* Stockaarud : réglages de connexion à Supabase (clé publique « anon », sans risque à publier :
-   ce sont les règles de la base qui protègent les données). */
+/* Stockaarud : base de données par défaut.
+   Sur l'adresse commune, ce fichier reste vide : chaque CAARUD branche sa propre base
+   au premier lancement, puis l'adresse de la base voyage dans le QR code d'invitation.
+   Si vous hébergez votre propre copie, vous pouvez la remplir (Supabase › Project Settings › API). */
 window.STOCKAARUD_CONFIG = {
-  supabaseUrl: "https://rewhjqiklkfxymvjifix.supabase.co",
-  supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJld2hqcWlrbGtmeHltdmppZml4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyMDQzOTEsImV4cCI6MjExMDc4MDM5MX0.GHdAgKLEetfRIN9owynhWH6QZGLnS1imaS-Xel-Pcgs"
+  supabaseUrl: "",   // ex. "https://abcdefghijkl.supabase.co"
+  supabaseKey: ""    // la clé publique « anon » ou « publishable » (jamais la clé service_role)
 };
