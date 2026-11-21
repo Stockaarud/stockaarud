@@ -88,3 +88,7 @@ Vous pouvez alors remplir `config.js` avec l'adresse et la clé de votre base, p
 | `backend.js` | Connexion à Supabase, codes d'accès et synchronisation |
 | `supabase/setup.sql` | Création des tables et des règles d'accès |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Installation sur l'écran d'accueil et mode hors ligne |
+
+## Licence
+
+Stockaarud est un logiciel libre, distribué sous licence MIT : voir [LICENSE](LICENSE).
