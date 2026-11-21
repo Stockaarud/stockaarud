@@ -121,6 +121,12 @@ language sql security invoker set search_path = public as $$
   where coll = p_coll and id = p_id;
 $$;
 
+-- Réveil quotidien : une requête minuscule, sans accès aux données, pour éviter la mise en pause du projet gratuit.
+create or replace function public.ping() returns text
+language sql stable security invoker set search_path = public as $$ select 'ok'::text $$;
+revoke execute on function public.ping from public;
+grant execute on function public.ping to anon, authenticated;
+
 -- ---------- Règles d'accès (RLS) --------------------------------------
 
 alter table public.documents   enable row level security;
