@@ -931,13 +931,13 @@ async function wipeRun(kind){
 }
 function accesPanel(){
   if(!window.SKB)return "";
-  return '<div class="panel" style="margin-top:12px"><h2>Accès et appareils</h2><p class="note">L\'équipe rejoint Stockaarud avec un code ou en scannant un QR code, sans créer de compte. Les responsables stock aussi : « Ajouter un responsable stock » donne un code de gestion à scanner. Le compte avec e-mail et mot de passe, créé à l\'installation, reste en secours.</p>'
+  return '<div class="panel" style="margin-top:12px"><h2>Accès et appareils</h2><p class="note">L\'équipe rejoint Stockaarud avec un code ou en scannant un QR code, sans créer de compte. Les responsables stock aussi : « Ajouter un responsable stock » donne un code de gestion à scanner. Si plus personne n\'a accès, un code de secours s\'obtient dans Supabase : SQL Editor, puis <code>select public.code_secours();</code></p>'
    +'<div class="row" style="margin-top:10px"><button class="btn primary" data-act="invite" data-v="equipe">Inviter l\'équipe</button><button class="btn" data-act="invite" data-v="coordo">Ajouter un responsable stock</button></div>'
    +'<div id="inviteBox"></div>'
    +'<div class="row" style="margin-top:12px"><button class="btn danger" data-act="removeTeam">Retirer l\'accès de toute l\'équipe</button><button class="btn" data-act="skbLogout">Se déconnecter de cet appareil</button></div>'
    +'<p class="note" style="margin-top:8px">Un téléphone perdu ? « Retirer l\'accès de toute l\'équipe » déconnecte tous les appareils de l\'équipe ; il suffit ensuite de leur donner un nouveau code.</p>'
    +'<div class="row" style="margin-top:12px"><button class="btn danger" data-act="removeGest">Retirer les responsables stock connectés par code</button></div>'
-   +'<p class="note" style="margin-top:8px">À utiliser si un responsable stock s\'en va ou perd son téléphone : ses appareils sont déconnectés et les anciens codes de gestion ne marchent plus. Les comptes avec e-mail et cet appareil-ci gardent l\'accès.</p></div>';
+   +'<p class="note" style="margin-top:8px">À utiliser si un responsable stock s\'en va ou perd son téléphone : ses appareils sont déconnectés et les anciens codes de gestion ne marchent plus. Cet appareil-ci garde l\'accès.</p></div>';
 }
 function codePanel(){
   const has=S.secret&&S.secret.hash;

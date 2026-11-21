@@ -42,6 +42,10 @@
   #skb label{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--muted,#53645d)}
   #skb .err{color:var(--crit,#b3332a);font-weight:700;min-height:1.2em}
   #skb .code{font:800 26px var(--display,"Archivo",sans-serif);letter-spacing:.25em;text-align:center;text-transform:uppercase}
+  #skb .step{display:flex;gap:10px;align-items:flex-start}#skb .step .n{flex:none;width:28px;height:28px;border-radius:50%;background:var(--accent,#1f4d3a);color:#fff;display:grid;place-items:center;font-weight:800}
+  #skb .step .t{display:block;margin-bottom:2px}#skb .step p b{color:var(--fg,#14201d)}#skb .step p{font-size:14px;color:var(--muted,#53645d);margin:0 0 6px}
+  #skb .row{display:flex;flex-wrap:wrap;gap:8px}#skb a.btn{text-decoration:none;display:inline-flex;align-items:center}
+  #skb textarea{width:100%;box-sizing:border-box;font:13px ui-monospace,monospace;padding:8px;border:1px solid var(--line,#d0dbd5);border-radius:8px;word-break:break-all}
   #skb .alt{background:none;border:0;color:var(--accent,#1f4d3a);text-decoration:underline;font:inherit;cursor:pointer;padding:10px 0;min-height:44px;text-align:left}`;
   let ov = null;
   function show(html) {
@@ -54,16 +58,56 @@
   const $ = s => ov && ov.querySelector(s);
   function busy(btn, on) { if (btn) { btn.disabled = on; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = on ? "Un instant…" : btn.dataset.t; } }
 
+  const SB_DASH = "https://supabase.com/dashboard/project/_/";
+  let setupSql = "";
+  function refFromKey(k) {
+    try { const p = JSON.parse(atob(k.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); return p.ref || ""; } catch (e) { return ""; }
+  }
   function screenSetup(msg) {
+    if (!setupSql) fetch("supabase/setup.sql").then(r => r.ok ? r.text() : "").then(t => { setupSql = t; }).catch(() => {});
+    const st = (n, t, body) => `<div class="step"><span class="n">${n}</span><div><b class="t">${t}</b>${body}</div></div>`;
+    const lk = (href, t) => `<a class="btn small" href="${href}" target="_blank" rel="noopener">${t}</a>`;
     show(`<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
-      <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit. <a href="https://github.com/Stockaarud/stockaarud#readme" target="_blank" rel="noopener">Le guide d'installation</a> explique comment la créer (10 minutes). Colle ensuite ici son adresse et sa clé publique (Supabase › Project Settings › API).</p>
-      <label>Adresse du projet<input id="sU" placeholder="https://xxxx.supabase.co" value="${esc(sbUrl)}" autocomplete="off"></label>
-      <label>Clé publique (anon / publishable)<input id="sK" value="${esc(sbKey)}" autocomplete="off"></label>
-      <div class="err" id="sE">${esc(msg || "")}</div><button class="btn primary big" id="sGo">Enregistrer</button></div>`);
-    $("#sGo").onclick = () => {
-      const u = $("#sU").value.trim().replace(/\/+$/, ""), k = $("#sK").value.trim();
-      if (!/^https:\/\/.+/.test(u) || k.length < 20) { $("#sE").textContent = "Vérifie l'adresse (https://…) et la clé."; return; }
+      <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit. Compte 15 minutes, sur un ordinateur.</p>
+      ${st(1, "Créer la base", `<p>Crée un compte gratuit Supabase, puis un projet « stockaarud » en Europe. Attends qu'il soit prêt (1 à 2 minutes).</p><div class="row">${lk("https://supabase.com/dashboard/new", "Créer le projet")}</div>`)}
+      ${st(2, "Installer les tables", `<p>Copie le script, ouvre l'éditeur SQL, colle-le et clique sur <b>Run</b>. Note le <b>code d'installation</b> affiché en bas.</p><div class="row"><button class="btn small" id="sCopy">Copier le script</button>${lk(SB_DASH + "sql/new", "Ouvrir l'éditeur SQL")}</div><textarea id="sSql" readonly hidden rows="4" aria-label="Script d'installation"></textarea>`)}
+      ${st(3, "Autoriser les connexions par code", `<p>Active <b>Allow anonymous sign-ins</b>, puis <b>Save</b>.</p><div class="row">${lk(SB_DASH + "auth/providers", "Ouvrir le réglage")}</div>`)}
+      ${st(4, "Brancher l'appli", `<p>Copie la clé <b>anon public</b> (onglet « Legacy API keys ») et colle-la ici, avec le code d'installation.</p><div class="row">${lk(SB_DASH + "settings/api-keys/legacy", "Ouvrir la page des clés")}</div>`)}
+      <label>Clé anon public<textarea id="sK" rows="3" autocomplete="off" spellcheck="false">${esc(sbKey)}</textarea></label>
+      <label id="sUL" hidden>Adresse du projet (Project URL)<input id="sU" placeholder="https://xxxx.supabase.co" value="${esc(sbUrl)}" autocomplete="off"></label>
+      <label>Code d'installation<input id="sC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters"></label>
+      <div class="err" id="sE">${esc(msg || "")}</div><button class="btn primary big" id="sGo">Installer</button>
+      <button class="alt" id="sAcc">J'ai un compte responsable stock avec e-mail</button></div>`);
+    $("#sCopy").onclick = () => {
+      const ta = $("#sSql");
+      if (!setupSql) { $("#sE").textContent = "Le script n'est pas encore chargé : réessaie dans une seconde."; return; }
+      const done = () => { $("#sCopy").textContent = "Script copié ✓"; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(setupSql).then(done, () => { ta.hidden = false; ta.value = setupSql; ta.select(); });
+      else { ta.hidden = false; ta.value = setupSql; ta.select(); }
+    };
+    const chk = () => { const k = $("#sK").value.trim(); $("#sUL").hidden = !k || !!refFromKey(k); };
+    $("#sK").oninput = chk; chk();
+    $("#sAcc").onclick = () => {
+      const k = $("#sK").value.trim(), ref = refFromKey(k), u = ref ? "https://" + ref + ".supabase.co" : $("#sU").value.trim().replace(/\/+$/, "");
+      if (!/^https:\/\/.+/.test(u) || k.length < 20) { $("#sE").textContent = "Colle d'abord la clé anon de ta base (étape 4)."; return; }
       LS.set("url", u); LS.set("key", k); location.reload();
+    };
+    $("#sGo").onclick = async () => {
+      const k = $("#sK").value.trim(), ref = refFromKey(k), code = $("#sC").value.trim().toUpperCase(), b = $("#sGo");
+      const u = ref ? "https://" + ref + ".supabase.co" : $("#sU").value.trim().replace(/\/+$/, "");
+      if (k.length < 20) { $("#sE").textContent = "Colle la clé anon public (étape 4)."; return; }
+      if (!/^https:\/\/.+/.test(u)) { $("#sE").textContent = "Indique aussi l'adresse du projet (https://…supabase.co)."; return; }
+      if (code.length < 6) { $("#sE").textContent = "Entre le code d'installation affiché après le script (étape 2)."; return; }
+      busy(b, true);
+      try {
+        const c = window.supabase.createClient(u, k, { auth: { persistSession: true, autoRefreshToken: true } });
+        const r = await c.auth.signInAnonymously();
+        if (r.error) { busy(b, false); $("#sE").textContent = /anonymous/i.test(r.error.message) ? "Les connexions par code ne sont pas encore autorisées : fais l'étape 3, puis réessaie." : /api key|invalid/i.test(r.error.message) ? "Cette clé n'est pas reconnue : vérifie que c'est bien la clé « anon public »." : netMsg(r.error); return; }
+        const j = await c.rpc("rejoindre", { p_code: code });
+        if (j.error) { busy(b, false); $("#sE").textContent = /function|rejoindre/i.test(j.error.message) ? "Les tables ne sont pas installées : fais l'étape 2, puis réessaie." : netMsg(j.error); await c.auth.signOut(); return; }
+        if (j.data !== "coordo") { busy(b, false); $("#sE").textContent = "Ce code d'installation n'est pas valide. Relance le script pour en obtenir un nouveau."; await c.auth.signOut(); return; }
+        LS.set("url", u); LS.set("key", k); location.reload();
+      } catch (e) { busy(b, false); $("#sE").textContent = netMsg(e); }
     };
   }
 
@@ -72,11 +116,12 @@
     show(`<div class="card"><h2>Je fais partie de l'équipe</h2><p>Entre le code donné par ton responsable stock, ou scanne son QR code. Ça marche aussi avec un code de responsable stock.</p>
       <input id="tC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters" inputmode="text" value="${esc(pc)}" aria-label="Code d'équipe">
       <div class="err" id="tE">${esc(msg || "")}</div><button class="btn primary big" id="tGo">Rejoindre l'équipe</button></div>
-      <div class="card"><h2>Responsable stock avec un compte</h2>
+      <button class="alt" id="cShow">J'ai un compte responsable stock avec e-mail</button>
+      <div class="card" id="cCard" hidden><h2>Responsable stock avec un compte</h2>
       <label>Adresse e-mail<input id="cM" type="email" autocomplete="username"></label>
       <label>Mot de passe<input id="cP" type="password" autocomplete="current-password"></label>
       <div class="err" id="cE"></div><button class="btn big" id="cGo">Se connecter</button>
-      <button class="alt" id="cNew">Première installation : créer le compte responsable stock</button></div>
+      </div>
       <button class="alt" id="cfg">Changer de base de données</button>`);
     $("#tC").onkeydown = e => { if (e.key === "Enter") $("#tGo").click(); };
     $("#cP").onkeydown = e => { if (e.key === "Enter") $("#cGo").click(); };
@@ -100,7 +145,7 @@
       if (error) { busy(b, false); $("#cE").textContent = /invalid/i.test(error.message) ? "E-mail ou mot de passe incorrect." : netMsg(error); return; }
       await enter(true);
     };
-    $("#cNew").onclick = () => screenSignup();
+    $("#cShow").onclick = () => { $("#cCard").hidden = false; $("#cShow").hidden = true; $("#cM").focus(); };
   }
 
   function screenSignup() {
