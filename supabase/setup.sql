@@ -70,7 +70,8 @@ declare r text;
 begin
   if auth.uid() is null then return null; end if;
   select role into r from public.codes_acces where code = upper(trim(p_code)) and actif;
-  if r is null then return null; end if;
+  -- un code faux fait attendre une seconde : deviner un code au hasard devient très long
+  if r is null then perform pg_sleep(1); return null; end if;
   -- un code « responsable stock » (rôle coordo) marche aussi sur un appareil sans compte
   insert into public.membres (user_id, role) values (auth.uid(), r)
     on conflict (user_id) do update set role =
@@ -85,8 +86,8 @@ declare c text;
 begin
   if not public.est_coordo() then raise exception 'reserve au coordo'; end if;
   if p_role not in ('coordo', 'equipe') then raise exception 'role inconnu'; end if;
-  -- code d'équipe : 6 caractères ; code de responsable stock : 10, car il donne accès à la gestion
-  c := upper(substr(md5(random()::text || clock_timestamp()::text), 1, case when p_role = 'coordo' then 10 else 6 end));
+  -- code d'équipe : 8 caractères ; code de responsable stock : 10, car il donne accès à la gestion
+  c := upper(substr(md5(random()::text || clock_timestamp()::text), 1, case when p_role = 'coordo' then 10 else 8 end));
   insert into public.codes_acces (code, role) values (c, p_role);
   return c;
 end $$;
