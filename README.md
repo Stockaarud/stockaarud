@@ -89,6 +89,15 @@ Vous pouvez alors remplir `config.js` avec l'adresse et la clé de votre base, p
 | `supabase/setup.sql` | Création des tables et des règles d'accès |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Installation sur l'écran d'accueil et mode hors ligne |
 
+## Mettre à jour les règles de la base
+
+Le script `supabase/setup.sql` peut être relancé sans risque : il ne supprime aucune donnée. Relancez-le (Supabase › SQL Editor) pour profiter des protections ajoutées depuis votre installation :
+
+- l'équipe ne peut modifier ou supprimer que ses propres saisies (le responsable stock peut tout corriger) ;
+- les codes d'équipe passent à 8 caractères, et un code faux fait attendre une seconde.
+
+Le code d'installation affiché à la fin est un nouveau code de responsable stock : gardez-le ou ignorez-le.
+
 ## Licence
 
 Stockaarud est un logiciel libre, distribué sous licence MIT : voir [LICENSE](LICENSE).

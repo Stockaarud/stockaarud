@@ -19,6 +19,10 @@ create table if not exists public.documents (
   primary key (coll, id)
 );
 
+-- Qui a créé chaque document : l'équipe ne peut modifier ou supprimer que ses propres saisies.
+-- (Les documents créés avant l'ajout de cette colonne n'ont pas d'auteur : seul le responsable stock peut les modifier.)
+alter table public.documents add column if not exists auteur uuid default auth.uid();
+
 -- Qui a accès : chaque compte est soit « coordo », soit « equipe ».
 create table if not exists public.membres (
   user_id     uuid        primary key references auth.users (id) on delete cascade,
@@ -158,14 +162,15 @@ drop policy if exists "suppression equipe"         on public.documents;
 create policy "lecture membres" on public.documents for select
   using (public.est_membre() and (coll <> 'secret' or public.est_coordo()));
 
--- Écrire : le coordo partout ; l'équipe seulement les mouvements et signalements.
+-- Écrire : le responsable stock partout.
+-- L'équipe : seulement les mouvements et les signalements, et seulement les siens pour modifier ou supprimer.
 create policy "ecriture equipe" on public.documents for insert
-  with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements')));
+  with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()));
 create policy "modif equipe" on public.documents for update
-  using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements')))
-  with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements')));
+  using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()))
+  with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()));
 create policy "suppression equipe" on public.documents for delete
-  using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements')));
+  using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()));
 
 drop policy if exists "voir son role" on public.membres;
 create policy "voir son role" on public.membres for select

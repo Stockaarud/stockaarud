@@ -381,8 +381,12 @@
           const cur = (store.get(c) || new Map()).get(id); if (cur) put(c, id, { ...cur, ...patch });
         },
         async delete() {
-          const { error } = await sb.from("documents").delete().eq("coll", c).eq("id", id);
-          if (error) throw mapErr(error); put(c, id, undefined);
+          const had = (store.get(c) || new Map()).has(id);
+          const { data, error } = await sb.from("documents").delete().eq("coll", c).eq("id", id).select("id");
+          if (error) throw mapErr(error);
+          // rien n'a été supprimé alors que le document existe : la base a refusé (saisie d'un collègue)
+          if (had && Array.isArray(data) && !data.length && navigator.onLine) throw mapErr({ message: "row-level security", code: "42501" });
+          put(c, id, undefined);
         },
         onSnapshot(next) {
           const k = c + "/" + id; if (!docL.has(k)) docL.set(k, new Set()); docL.get(k).add(next);
