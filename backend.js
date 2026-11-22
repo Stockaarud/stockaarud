@@ -476,6 +476,7 @@
     async disableCodes(r) { const { error } = await sb.rpc("desactiver_codes", { p_role: r }); if (error) throw mapErr(error); },
     async removeTeam() { const { error } = await sb.rpc("retirer_equipe"); if (error) throw mapErr(error); },
     async removeGest() { const { error } = await sb.rpc("retirer_gestion_par_code"); if (error) throw mapErr(error); },
+    async email() { if (LOCAL || !sb) return ""; try { const { data } = await sb.auth.getUser(); return (data && data.user && data.user.email) || ""; } catch (e) { return ""; } },
     inviteLink, qrSvg, logout,
     installLink() { if (LOCAL || !sbUrl) return ""; const c = BK.get("code", ""); return inviteLink(c || undefined).replace(location.origin, ""); },
     bases, switchBase, addLink, setName,
