@@ -42,6 +42,7 @@
     LS.set("url", u); LS.set("key", pK); addBase(u, pK); LS.del("local");
   }
   if (urlCode) { LS.set("pendingCode", urlCode); LS.set("pendingFor", refOf(LS.get("url", "") || CFG.supabaseUrl || "")); }
+  const cameFromUrl = !!(urlCode && pB && pK);
   if (urlCode || pB || pK) history.replaceState(null, "", location.pathname + location.hash);
 
   let sbUrl = LS.get("url", "") || CFG.supabaseUrl || "";
@@ -153,6 +154,8 @@
       </div>
       <button class="alt" id="cfg">Changer de base de données</button>`);
     $("#tC").onkeydown = e => { if (e.key === "Enter") $("#tGo").click(); };
+    // ouverte depuis l'icône de l'écran d'accueil avec le code dans l'adresse : on rejoint tout seul
+    if (pc && !msg && cameFromUrl && (navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches))) setTimeout(() => { const g = $("#tGo"); if (g) g.click(); }, 300);
     $("#cP").onkeydown = e => { if (e.key === "Enter") $("#cGo").click(); };
     $("#cfg").onclick = () => screenSetup();
     $("#tGo").onclick = async () => {
@@ -165,7 +168,7 @@
         const { data, error } = await sb.rpc("rejoindre", { p_code: code });
         if (error) throw error;
         if (!data) { busy(b, false); $("#tE").textContent = "Code inconnu ou désactivé. Demande un nouveau code au responsable stock."; return; }
-        LS.del("pendingCode"); await enter();
+        LS.del("pendingCode"); BK.set("code", code); await enter();
       } catch (e) { busy(b, false); $("#tE").textContent = netMsg(e, "La connexion a échoué. Vérifie que les connexions anonymes sont activées dans Supabase."); }
     };
     $("#cGo").onclick = async () => {
@@ -474,6 +477,7 @@
     async removeTeam() { const { error } = await sb.rpc("retirer_equipe"); if (error) throw mapErr(error); },
     async removeGest() { const { error } = await sb.rpc("retirer_gestion_par_code"); if (error) throw mapErr(error); },
     inviteLink, qrSvg, logout,
+    installLink() { if (LOCAL || !sbUrl) return ""; const c = BK.get("code", ""); return inviteLink(c || undefined).replace(location.origin, ""); },
     bases, switchBase, addLink, setName,
     forget(r) { if (r === base) logout(); else forgetLocal(r); }
   });
