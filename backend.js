@@ -39,15 +39,17 @@
   const pB = (params.get("b") || "").trim(), pK = (params.get("k") || "").trim();
   if (pB && pK) {
     const u = /^https:\/\//.test(pB) ? pB.replace(/\/+$/, "") : "https://" + pB.replace(/[^a-z0-9-]/gi, "") + ".supabase.co";
-    LS.set("url", u); LS.set("key", pK); addBase(u, pK);
+    LS.set("url", u); LS.set("key", pK); addBase(u, pK); LS.del("local");
   }
   if (urlCode) { LS.set("pendingCode", urlCode); LS.set("pendingFor", refOf(LS.get("url", "") || CFG.supabaseUrl || "")); }
   if (urlCode || pB || pK) history.replaceState(null, "", location.pathname + location.hash);
 
   let sbUrl = LS.get("url", "") || CFG.supabaseUrl || "";
   let sbKey = (LS.get("url", "") ? LS.get("key", "") : "") || CFG.supabaseKey || "";
-  const base = refOf(sbUrl);
-  if (base) addBase(sbUrl, sbKey);
+  /* Mode sans compte : tout reste sur cet appareil, jusqu'à ce qu'on branche une base */
+  const LOCAL = !!LS.get("local", false);
+  const base = LOCAL ? "local" : refOf(sbUrl);
+  if (base && !LOCAL) addBase(sbUrl, sbKey);
   window.STK_NS = base ? "stk@" + base + ":" : "stk:";
   const BK = { get: (k, d) => LS.get(base + ":" + k, d), set: (k, v) => LS.set(base + ":" + k, v), del: k => LS.del(base + ":" + k) };
   let sb = null, uid = null, role = BK.get("role", null), synced = false;
@@ -90,7 +92,8 @@
     if (!setupSql) fetch("supabase/setup.sql").then(r => r.ok ? r.text() : "").then(t => { setupSql = t; }).catch(() => {});
     const st = (n, t, body) => `<div class="step"><span class="n">${n}</span><div><b class="t">${t}</b>${body}</div></div>`;
     const lk = (href, t) => `<a class="btn small" href="${href}" target="_blank" rel="noopener">${t}</a>`;
-    show(`<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
+    const hasLocal = !!localStorage.getItem("skb:local:cache");
+    show((LOCAL ? `<div class="card"><h2>Passer en ligne</h2><p>Crée la base de ton CAARUD avec les 4 étapes ci-dessous. À la fin, tout ce que tu as saisi sur cet appareil y sera envoyé, et tu pourras inviter l'équipe.</p><button class="alt" id="sBack">Plus tard : revenir à l'appli</button></div>` : `<div class="card"><h2>Essayer tout de suite, sans compte</h2><p>Rien à installer : le stock est gardé sur cet appareil. Tu pourras passer en ligne plus tard pour inviter l'équipe, sans rien ressaisir.</p><button class="btn primary big" id="sLocal">${hasLocal ? "Reprendre sur cet appareil" : "Commencer sur cet appareil"}</button></div>`) + `<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
       <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit. Compte 15 minutes, sur un ordinateur.</p>
       ${st(1, "Créer la base", `<p>Crée un compte gratuit Supabase, puis un projet « stockaarud » en Europe. Attends qu'il soit prêt (1 à 2 minutes).</p><div class="row">${lk("https://supabase.com/dashboard/new", "Créer le projet")}</div>`)}
       ${st(2, "Installer les tables", `<p>Copie le script, ouvre l'éditeur SQL, colle-le et clique sur <b>Run</b>. Note le <b>code d'installation</b> affiché en bas.</p><div class="row"><button class="btn small" id="sCopy">Copier le script</button>${lk(SB_DASH + "sql/new", "Ouvrir l'éditeur SQL")}</div><textarea id="sSql" readonly hidden rows="4" aria-label="Script d'installation"></textarea>`)}
@@ -101,6 +104,8 @@
       <label>Code d'installation<input id="sC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters"></label>
       <div class="err" id="sE">${esc(msg || "")}</div><button class="btn primary big" id="sGo">Installer</button>
       <button class="alt" id="sAcc">J'ai un compte responsable stock avec e-mail</button></div>`);
+    if ($("#sLocal")) $("#sLocal").onclick = () => { LS.set("local", true); location.reload(); };
+    if ($("#sBack")) $("#sBack").onclick = () => { hide(); };
     $("#sCopy").onclick = () => {
       const ta = $("#sSql");
       if (!setupSql) { $("#sE").textContent = "Le script n'est pas encore chargé : réessaie dans une seconde."; return; }
@@ -129,7 +134,8 @@
         const j = await c.rpc("rejoindre", { p_code: code });
         if (j.error) { busy(b, false); $("#sE").textContent = /function|rejoindre/i.test(j.error.message) ? "Les tables ne sont pas installées : fais l'étape 2, puis réessaie." : netMsg(j.error); await c.auth.signOut(); return; }
         if (j.data !== "coordo") { busy(b, false); $("#sE").textContent = "Ce code d'installation n'est pas valide. Relance le script pour en obtenir un nouveau."; await c.auth.signOut(); return; }
-        LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
+        if (LOCAL || localStorage.getItem("skb:local:cache")) LS.set("migrate", refOf(u));
+        LS.del("local"); LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
       } catch (e) { busy(b, false); $("#sE").textContent = netMsg(e); }
     };
   }
@@ -224,6 +230,7 @@
     }
     if (!r) { if (anon) { await sb.auth.signOut(); screenLogin("Cet appareil n'a plus accès. Demande un nouveau code au responsable stock."); } else screenCoordoCode(); return; }
     role = r; BK.set("role", r); BK.set("uid", uid);
+    if (r === "coordo" && LS.get("migrate", "") === base) await migrateLocal();
     if (ov) hide();
     startSync();
     resolveReady(true);
@@ -255,6 +262,23 @@
     n = String(n || "").trim(); const L = LS.get("bases", []), e = L.find(x => refOf(x.u) === base);
     if (e && n && e.n !== n) { e.n = n; LS.set("bases", L); }
   }
+  async function migrateLocal() {
+    let d = null; try { d = JSON.parse(localStorage.getItem("skb:local:cache") || "null"); } catch (e) {}
+    if (!d) { LS.del("migrate"); return; }
+    const rows = []; for (const c in d) for (const id in d[c]) rows.push({ coll: c, id, data: d[c][id], updated_at: new Date().toISOString() });
+    show(`<div class="card"><h2>Envoi de tes données…</h2><p id="mgP">0 / ${rows.length}</p><p>Garde cette page ouverte.</p></div>`);
+    try {
+      for (let i = 0; i < rows.length; i += 200) {
+        const { error } = await sb.from("documents").upsert(rows.slice(i, i + 200)); if (error) throw error;
+        const el = $("#mgP"); if (el) el.textContent = Math.min(rows.length, i + 200) + " / " + rows.length;
+      }
+      LS.del("migrate"); lsDrop("skb:local:"); lsMove("stk@local:", "stk@" + base + ":");
+    } catch (e) {
+      show(`<div class="card"><h2>L'envoi n'a pas abouti</h2><p>${esc(netMsg(e))}</p><p>Tes données sont toujours sur cet appareil. Réessaie quand la connexion est bonne.</p><button class="btn primary big" id="mgR">Réessayer</button></div>`);
+      await new Promise(res => { $("#mgR").onclick = res; }); return migrateLocal();
+    }
+  }
+  const lsMove = (from, to) => lsKeys(from).forEach(k => { try { if (localStorage.getItem(to + k.slice(from.length)) == null) localStorage.setItem(to + k.slice(from.length), localStorage.getItem(k)); localStorage.removeItem(k); } catch (e) {} });
   async function logout() {
     try { await sb.auth.signOut(); } catch (e) {}
     forgetLocal(base);
@@ -269,7 +293,10 @@
   if (cached && typeof cached === "object") for (const c in cached) store.set(c, new Map(Object.entries(cached[c])));
   const collL = new Map(), docL = new Map();
   let saveT = 0;
-  function saveCache() { clearTimeout(saveT); saveT = setTimeout(() => { const o = {}; for (const [c, m] of store) o[c] = Object.fromEntries(m); BK.set("cache", o); }, 400); }
+  const writeCache = () => { clearTimeout(saveT); saveT = 0; const o = {}; for (const [c, m] of store) o[c] = Object.fromEntries(m); BK.set("cache", o); };
+  // sans compte, ce cache est la seule copie des données : on l'écrit presque tout de suite, et toujours avant de quitter la page
+  function saveCache() { clearTimeout(saveT); saveT = setTimeout(writeCache, LOCAL ? 40 : 400); }
+  if (LOCAL) { window.addEventListener("pagehide", () => { if (saveT) writeCache(); }); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && saveT) writeCache(); }); }
   const meta = () => ({ fromCache: !synced, hasPendingWrites: false });
   function docSnap(c, id) { const m = store.get(c), d = m && m.get(id); return { id, exists: d !== undefined, data: () => d, metadata: meta() }; }
   function emitColl(c) {
@@ -364,6 +391,20 @@
     }
   });
 
+  const dbLocal = Object.freeze({
+    doc(path) {
+      const [c, id] = split(path);
+      return {
+        id, path,
+        async get() { return docSnap(c, id); },
+        async set(data) { put(c, id, JSON.parse(JSON.stringify(data))); },
+        async update(patch) { const cur = (store.get(c) || new Map()).get(id); if (cur) put(c, id, { ...cur, ...JSON.parse(JSON.stringify(patch)) }); },
+        async delete() { put(c, id, undefined); },
+        onSnapshot(next) { const k = c + "/" + id; if (!docL.has(k)) docL.set(k, new Set()); docL.get(k).add(next); setTimeout(() => next(docSnap(c, id)), 0); return () => docL.get(k).delete(next); }
+      };
+    },
+    collection(c) { return { path: c, doc: id => dbLocal.doc(c + "/" + id), onSnapshot(next) { if (!collL.has(c)) collL.set(c, new Set()); collL.get(c).add(next); setTimeout(() => emitColl(c), 0); return () => collL.get(c).delete(next); } }; }
+  });
   const user = Object.freeze({
     isOwner: async () => role === "coordo",
     canEdit: async () => role === "coordo",
@@ -394,7 +435,7 @@
     }
   });
 
-  const caps = { db, user, assets, downloads };
+  const caps = { db: LOCAL ? dbLocal : db, user, assets: LOCAL ? null : assets, downloads };
   window.claude = Object.freeze({ use: name => ready.then(() => caps[name] || null) });
 
   /* ---------- Outils pour l'écran « Accès et appareils » ---------- */
@@ -408,8 +449,10 @@
   }
   window.SKB = Object.freeze({
     get role() { return role; },
-    get url() { return sbUrl; },
-    async newCode(r) { const { data, error } = await sb.rpc("creer_code", { p_role: r }); if (error) throw mapErr(error); return data; },
+    get url() { return LOCAL ? "cet appareil (sans compte)" : sbUrl; },
+    get local() { return LOCAL; },
+    goOnline() { screenSetup(); },
+    async newCode(r) { if (LOCAL) throw { code: "local", message: "Passe en ligne pour inviter l'équipe." }; const { data, error } = await sb.rpc("creer_code", { p_role: r }); if (error) throw mapErr(error); return data; },
     async disableCodes(r) { const { error } = await sb.rpc("desactiver_codes", { p_role: r }); if (error) throw mapErr(error); },
     async removeTeam() { const { error } = await sb.rpc("retirer_equipe"); if (error) throw mapErr(error); },
     async removeGest() { const { error } = await sb.rpc("retirer_gestion_par_code"); if (error) throw mapErr(error); },
@@ -419,6 +462,7 @@
   });
 
   /* ---------- Démarrage ---------- */
+  if (LOCAL) { role = "coordo"; uid = "local"; synced = true; resolveReady(true); return; }
   if (!sbUrl || !sbKey || !window.supabase) { screenSetup(!window.supabase ? "La bibliothèque Supabase n'a pas pu se charger : vérifie la connexion internet." : ""); return; }
   try { sb = window.supabase.createClient(sbUrl, sbKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }); }
   catch (e) { screenSetup("Adresse ou clé invalide."); return; }
