@@ -286,7 +286,7 @@
   function mapErr(error) {
     const m = (error && error.message) || "";
     if (!navigator.onLine || /fetch|network|Failed to fetch|timeout/i.test(m) || error.status === 0) return { code: "unavailable", message: m };
-    if (/row-level security|permission|42501/i.test(m + (error.code || ""))) return { code: "invalid_argument", message: m };
+    if (/row-level security|permission|42501/i.test(m + (error.code || ""))) { setTimeout(resync, 50); return { code: "invalid_argument", message: m }; }
     return { code: "unavailable", message: m };
   }
   async function fullSync() {
@@ -310,7 +310,17 @@
     }
     resync();
   }
-  async function resync() { if (syncing || !navigator.onLine) return; syncing = true; try { await fullSync(); } catch (e) { console.warn("Synchronisation impossible", e); } syncing = false; }
+  /* L'accès a pu être retiré (ou changé) depuis un autre appareil : on le vérifie avant de recharger les données. */
+  async function checkAccess() {
+    if (!navigator.onLine || !sb || !role) return true;
+    try {
+      const { data, error } = await sb.rpc("mon_role"); if (error) return true;
+      if (!data) { BK.set("msg", "Cet appareil n'a plus accès. Demande un nouveau code au responsable stock."); BK.del("cache"); await sb.auth.signOut(); return false; }
+      if (data !== role) { role = data; BK.set("role", data); location.reload(); return false; }
+    } catch (e) {}
+    return true;
+  }
+  async function resync() { if (syncing || !navigator.onLine) return; syncing = true; try { if (await checkAccess()) await fullSync(); } catch (e) { console.warn("Synchronisation impossible", e); } syncing = false; }
   window.addEventListener("online", resync);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") resync(); });
 
@@ -412,6 +422,6 @@
   if (!sbUrl || !sbKey || !window.supabase) { screenSetup(!window.supabase ? "La bibliothèque Supabase n'a pas pu se charger : vérifie la connexion internet." : ""); return; }
   try { sb = window.supabase.createClient(sbUrl, sbKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }); }
   catch (e) { screenSetup("Adresse ou clé invalide."); return; }
-  sb.auth.getSession().then(({ data }) => { if (data.session) enter(); else screenLogin(); });
+  sb.auth.getSession().then(({ data }) => { if (data.session) enter(); else { const m = BK.get("msg", ""); BK.del("msg"); screenLogin(m); } });
   sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT" && role) { BK.del("role"); location.reload(); } });
 })();
