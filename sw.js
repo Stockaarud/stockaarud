@@ -1,7 +1,7 @@
 /* Stockaarud : fonctionnement hors ligne.
    Garde l'appli en cache pour qu'elle s'ouvre même sans réseau.
    Les données passent toujours par Supabase (et par la file d'attente de l'appli hors ligne). */
-const CACHE = "stockaarud-v3";
+const CACHE = "stockaarud-v4";
 const SHELL = ["./", "index.html", "backend.js", "config.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js",
