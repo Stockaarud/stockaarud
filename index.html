@@ -266,7 +266,6 @@ td.n,th.n{text-align:right}
  table.resp td:first-child::before{content:none}
  table.resp td:last-child:empty{display:none}
  table.resp td .btn{margin-left:auto}
- .tw{overflow-x:visible}
 }
 .auto{display:flex;flex-direction:column;margin-top:8px}
 .auto details{border-bottom:1px solid var(--line)}
@@ -493,7 +492,8 @@ details summary{cursor:pointer;font-weight:600}
 .chips.actrow .chip{flex:none;scroll-snap-align:start}
 .chips.actrow .chip[aria-pressed="true"]{background:var(--actc,var(--accent));border-color:var(--actc,var(--accent));color:#fff;font-weight:700}
 .actkeep{margin:2px 0 0}
-.quoi.attente .search,.quoi.attente details,.quoi.attente .grid{opacity:.45;filter:saturate(.4)}
+.quoi.attente .search,.quoi.attente .grid,.quoi.attente summary>:not(.pill){opacity:.45;filter:saturate(.4)}
+.quoi.attente summary::before,.quoi.attente summary::after{opacity:.45}
 .quoi.attente .quoi-msg{font-weight:700;color:var(--fg)}
 .mvtadd{margin-top:12px;gap:8px;align-items:center}
 details.panel.fold>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
@@ -558,6 +558,37 @@ details.panel.fold[open]>summary::after{transform:rotate(-135deg);margin-bottom:
 .actdeck.none .adc{opacity:1;transform:none}
 .actdeck.none .adpad:first-child{flex-basis:4px}
 @media (prefers-reduced-motion:reduce){.adc{transition:none}}
+/* Écran équipe sur petit téléphone : 2 colonnes, tuiles compactes, activités en liste */
+.tile .sq{display:none}
+@media (max-width:420px){
+ .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ details.cat>.grid,details.cat>.subs+.grid{padding:0 8px 8px}details.sub>.grid{padding:0 6px 6px}
+ .tile{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto 1fr;align-content:start;gap:5px 6px;padding:8px;min-height:88px}
+ .tile .badge{width:32px;height:32px;border-radius:8px;border-width:1.5px}
+ .tile .nm{grid-column:1/-1;font:700 14.5px/1.18 var(--body);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+ .tile .sq{display:flex;align-items:center;justify-content:flex-end;gap:5px;min-width:0;font-size:12.5px;line-height:1.15;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+ .tile .sq b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .tile .st{position:absolute;width:1px;height:1px;margin:0;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+ .grid .skel{height:88px}
+}
+.actname{border:0;background:none;padding:2px 6px;border-radius:10px;cursor:pointer;font-family:var(--display);min-height:44px;justify-content:center}
+.actname .actdd{width:18px;height:18px;flex:none;color:var(--muted);margin-left:-4px}
+.actname:focus-visible{outline:2px solid var(--fg);outline-offset:-2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.actpicks{display:flex;flex-direction:column;gap:8px}
+.actpick{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px 14px;border:2px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);font:700 17px/1.2 var(--body);text-align:left;cursor:pointer}
+.actpick .sw{width:14px;height:14px;border-radius:50%;background:var(--c);flex:none;box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--c)}
+.actpick .aic{margin:0}.actpick .an{flex:1;min-width:0;overflow-wrap:anywhere}
+.actpick[aria-current="true"]{border-color:var(--c);background:color-mix(in srgb,var(--c) 14%,var(--surface))}
+.actpick .now{flex:none;font:600 13px var(--body);display:inline-flex;align-items:center;gap:4px}
+.actpick .now svg{width:16px;height:16px}
+.sact{display:flex;align-items:center;flex-wrap:wrap;gap:2px 8px;font-size:14px;color:var(--fg)}
+.sact .sw{width:12px;height:12px;border-radius:50%;background:var(--c);flex:none}
+.sact b{display:inline-flex;align-items:center;gap:6px;font-weight:700;padding:2px 10px 2px 7px;border-radius:999px;border:1.5px solid var(--c);background:color-mix(in srgb,var(--c) 14%,var(--surface))}
+.sact .link{font-size:14px;padding:12px 6px;margin:-12px 0}
+.brand .caarud{position:relative}
+.brand .caarud::after{content:"";position:absolute;inset:-11px -4px}
+.tlogout{text-align:center;margin-top:40px}
 </style>
 </head>
 <body>
@@ -1045,9 +1076,15 @@ function paintAct(){const H=document.documentElement,teamOn=S.view!=="coordo"&&S
 function actBar(){const L=actCycle(),i=L.indexOf(S.activite),has=i>=0,dir=S.actDir;S.actDir=0;
   const arr=(v,d,l)=>'<button class="actarr" data-act="actStep" data-v="'+v+'" aria-label="'+l+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+d+'" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
   return '<div class="label"><span class="stepn">1</span>Où ?</div><div class="actbar'+(has?'':' none')+'" data-swipe="act">'+arr(-1,"M15 5l-7 7 7 7","Activité précédente")
-   +'<div class="actmid" aria-live="polite"><div class="actname'+(dir>0?" in-r":dir<0?" in-l":"")+'">'+(has?actIco(S.activite,"aic big")+'<span>'+esc(actLabel(S.activite))+'</span>':'<span class="actnone">Choisis l\'activité</span>')+'</div><div class="actdots" aria-hidden="true">'+L.map((x,k)=>'<i'+(k===i?' class="on"':'')+'></i>').join("")+'</div></div>'
+   +'<div class="actmid" aria-live="polite"><button type="button" class="actname'+(dir>0?" in-r":dir<0?" in-l":"")+'" data-act="actSheet" aria-haspopup="dialog">'+(has?actIco(S.activite,"aic big")+'<span>'+esc(actLabel(S.activite))+'</span>':'<span class="actnone">Choisis l\'activité</span>')+'<svg class="actdd" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr">'+(has?' : voir toutes les activités':' dans la liste')+'</span></button><div class="actdots" aria-hidden="true">'+L.map((x,k)=>'<i'+(k===i?' class="on"':'')+'></i>').join("")+'</div></div>'
    +arr(1,"M9 5l7 7-7 7","Activité suivante")+'</div>'
-   +'<div class="actmeta"><span class="note">'+(has?'Gardée pour la journée':'Flèches ou glisse le doigt')+'</span></div>'}
+   +'<div class="actmeta"><span class="note">'+(has?'Gardée pour la journée':'Touche pour voir la liste, ou flèches')+'</span></div>'}
+/* Liste de toutes les activités, en feuille : depuis le nom de l'activité ou depuis la feuille de quantité */
+function drawActs(){const cur=S.activite,ck='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  if(!sheet)lastFocus=document.activeElement;
+  $("#layer").innerHTML='<div class="sheet-back enter" data-act="actClose"><div class="sheet" role="dialog" aria-modal="true" aria-label="Choisir l\'activité"><h2>Quelle activité\u202f?</h2><p class="note" style="margin:-6px 0 0">Elle reste choisie pour la journée.</p><div class="actpicks">'
+   +actCycle().map(id=>'<button type="button" class="actpick" data-act="actPick" data-id="'+esc(id)+'" style="--c:'+esc(actColor(id))+'" aria-current="'+(id===cur)+'"><span class="sw" aria-hidden="true"></span>'+actIco(id,"aic big")+'<span class="an">'+esc(actLabel(id))+'</span>'+(id===cur?'<span class="now">'+ck+'Actuelle</span>':'')+'</button>').join("")
+   +'</div><button type="button" class="btn big" data-act="actClose" style="min-height:46px">'+(sheet?'Retour':'Annuler')+'</button></div></div>';focusDialog()}
 /* Cartes des activités : quand on a fait glisser la rangée, la carte arrêtée au milieu devient l'activité */
 (()=>{let user=false,tm=0;const deck=()=>document.querySelector(".actdeck");
   document.addEventListener("pointerdown",e=>{if(e.target.closest&&e.target.closest(".actdeck"))user=true},{passive:true});
@@ -1074,6 +1111,10 @@ function closeIosGuide(){try{if(S.iosUrl)history.replaceState(null,"",S.iosUrl);
 function themeBar(){const t=ls.get("theme","auto");return '<div class="themebar"><span class="note">Affichage</span><div class="seg" role="group" aria-label="Affichage clair ou sombre">'+[["auto","Auto"],["light","Clair"],["dark","Sombre"]].map(([v,l])=>'<button data-act="theme" data-v="'+v+'" aria-pressed="'+(t===v)+'">'+l+'</button>').join("")+'</div></div>'}
 function applyTheme(){const t=ls.get("theme","auto"),H=document.documentElement;if(t==="auto")delete H.dataset.theme;else H.dataset.theme=t}
 applyTheme();
+/* « Les plus utilisés » : ordre calculé une fois par jour et par activité, pour que les tuiles ne bougent pas après une sortie */
+function topRang(){const j=today(),k=S.activite||"",T=ls.get("topJour",null);if(T&&T.j===j&&T.a===k&&Array.isArray(T.r))return T.r;
+  const f={};for(const m of S.mvts)if(m.type==="sortie"&&m.activite===S.activite)f[m.produit]=(f[m.produit]||0)+1;
+  const r=Object.keys(f).sort((a,b)=>f[b]-f[a]);if(S.mvts.length||S.dbState==="ok")ls.set("topJour",{j,a:k,r});return r}
 function viewEquipe(st){
   const acts=activitesActives(),L=lieux();
   if(!S.lieu||!L.find(l=>l.id===S.lieu))S.lieu=(principal()||{}).id;
@@ -1084,19 +1125,20 @@ function viewEquipe(st){
   const has=S.activite&&actCycle().includes(S.activite);h+=actBar()+(has?terrainBar():'');
   if(!acts.length&&S.config)h+='<p class="note">Aucune activité pour l\'instant : le responsable stock les crée dans Réglages.</p>';
   // tri : les plus sortis pour cette activité d'abord
-  const freq={};for(const m of S.mvts)if(m.type==="sortie"&&m.activite===S.activite)freq[m.produit]=(freq[m.produit]||0)+1;
+  const rg=topRang(),freq={};rg.forEach((id,i)=>freq[id]=rg.length-i);
   let ps=prodsActifs().filter(p=>matches(p,S.query));
   ps.sort((a,b)=>(freq[b.id]||0)-(freq[a.id]||0)||a.nom.localeCompare(b.nom,"fr"));
   h+='<div class="quoi'+(S.activite?'':' attente')+'">';
   h+='<div class="row" style="justify-content:space-between;margin:18px 0 8px"><div class="label" style="margin:0"><span class="stepn">2</span>Quoi ?</div></div><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" inputmode="search" autocomplete="off" placeholder="Chercher : paille, capotes, nalox…" value="'+esc(S.query)+'" aria-label="Chercher un produit"></div>';
   if(!S.activite)h+='<p class="note quoi-msg">Choisis d\'abord l\'activité ci-dessus, puis touche un produit.</p>';
-  const tile=p=>{const s=st[p.id],sl=s.byLieu[S.lieu]||0;return '<button class="tile'+(S.flash&&S.flash.id===p.id&&Date.now()<S.flash.until?' flash':'')+'" style="--cat:var('+(CATCOL[catOf(p)]||"--muted")+')" data-act="pick" data-id="'+p.id+'">'+badge(p)+'<span class="nm">'+esc(p.nom)+'</span><span class="st"><span class="dot '+(sl<=0?"crit":s.etat==="mute"?"":s.etat==="good"?"ok":s.etat)+'"></span>'+(sl<=0?'<b style="color:var(--crit)">Stock épuisé</b>':(s.etat==="crit"?'<b style="color:var(--crit)">stock bas</b>, ':s.etat==="warn"?'<b style="color:var(--warn)">à surveiller</b>, ':"")+'reste '+esc(fmtQ(p,sl)))+'</span></button>'};
+  const tile=p=>{const s=st[p.id],sl=s.byLieu[S.lieu]||0;return '<button class="tile'+(S.flash&&S.flash.id===p.id&&Date.now()<S.flash.until?' flash':'')+'" style="--cat:var('+(CATCOL[catOf(p)]||"--muted")+')" data-act="pick" data-id="'+p.id+'">'+badge(p)+'<span class="sq" aria-hidden="true"><span class="dot '+(sl<=0?"crit":s.etat==="mute"?"":s.etat==="good"?"ok":s.etat)+'"></span>'+(sl<=0?'<b style="color:var(--crit)">épuisé</b>':s.etat==="crit"||s.etat==="warn"?'<b style="color:var(--'+s.etat+')">'+esc(fmtQ(p,sl))+'</b>':'<b style="font-weight:600">'+esc(fmtQ(p,sl))+'</b>')+'</span><span class="nm">'+esc(p.nom)+'</span><span class="st"><span class="dot '+(sl<=0?"crit":s.etat==="mute"?"":s.etat==="good"?"ok":s.etat)+'"></span>'+(sl<=0?'<b style="color:var(--crit)">Stock épuisé</b>':(s.etat==="crit"?'<b style="color:var(--crit)">stock bas</b>, ':s.etat==="warn"?'<b style="color:var(--warn)">à surveiller</b>, ':"")+'reste '+esc(fmtQ(p,sl)))+'</span></button>'};
   const grid=a=>'<div class="grid">'+a.map(tile).join("")+'</div>';
   const catBody=(k,a)=>{const gs=[...new Set(a.map(p=>p.groupe).filter(Boolean))].sort((x,y)=>x.localeCompare(y,"fr"));if(!gs.length)return grid(a);
     let o='<div class="subs">';for(const g of gs){const b=a.filter(p=>p.groupe===g),lw=b.filter(p=>(st[p.id].byLieu[S.lieu]||0)<=0||st[p.id].etat==="crit").length;
       o+='<details class="sub"'+dk("sub-"+k+"-"+g,a.length<=8)+'><summary><span class="ct">'+esc(g)+'</span>'+(lw?'<span class="pill crit">'+lw+' stock bas</span>':'')+'<span class="cn">'+b.length+'</span></summary>'+grid(b)+'</details>'}
     const r=a.filter(p=>!p.groupe);return o+'</div>'+(r.length?grid(r):'')};
-  if(S.query.trim().length>=2||!ps.length)h+=grid(ps);
+  if(S.query.trim().length>=2&&!ps.length)h+='<div class="empty" style="margin-top:14px">Rien trouvé pour « '+esc(S.query)+' ».<br><button class="btn" style="margin-top:10px" data-act="signal">Signaler au responsable stock</button></div>';
+  else if(S.query.trim().length>=2||!ps.length)h+=grid(ps);
   else{
     const top=ps.filter(p=>freq[p.id]).slice(0,6);
     if(top.length&&ps.length>8)h+='<details class="cat"'+dk("cat-top",true)+'><summary><span class="ct">Les plus utilisés'+(S.activite&&!S.activite.startsWith("__")?" pour « "+esc(actNom(S.activite))+" »":"")+'</span><span class="cn">'+top.length+'</span></summary>'+grid(top)+'</details>';
@@ -1107,18 +1149,17 @@ function viewEquipe(st){
   h+='</div>';
   h+=livraisonsEquipe();
   h+=mesRecap()+installBar()+themeBar();
-  if(window.SKB&&!S.isAdmin)h+='<p class="note" style="text-align:center;margin-top:24px">Appareil connecté à l\'équipe. <button class="link" data-act="skbLogout">Déconnecter cet appareil</button></p>';
   const RD0=rendusSet(),prets=allMvts().filter(m=>m.type==="depannage"&&m.aRendre&&!estRendu(m,RD0));
   if(prets.length)h+='<details class="panel" style="margin-top:16px"><summary><b>Prêts en cours ('+prets.length+')</b> <span class="note">· touche « Rendu » quand l\'asso rend le matériel</span></summary><div class="list" style="margin-top:6px">'+prets.map(m=>{const p=S.produits.get(m.produit)||{nom:"?"};return '<div class="it"><span style="flex:1;min-width:150px"><b>'+esc(p.nom)+'</b> · '+esc(fmtQ(p,m.qte))+'<br><span class="note">'+esc(assoNom(m))+', le '+fmtDate(m.t)+'</span></span><button class="btn small" data-act="rendu" data-id="'+m.id+'">Rendu</button></div>'}).join("")+'</div></details>';
-  if(S.query.trim().length>=2&&!ps.length)h+='<div class="empty">Rien trouvé pour « '+esc(S.query)+' ».<br><button class="btn" style="margin-top:10px" data-act="signal">Signaler au responsable stock</button></div>';
-  else if(!prodsActifs().length&&S.config)h+='<div class="empty">Le catalogue est vide : le responsable stock active le matériel dans Réglages.</div>';
+  if(!prodsActifs().length&&S.config)h+='<div class="empty">Le catalogue est vide : le responsable stock active le matériel dans Réglages.</div>';
+  if(window.SKB&&!S.isAdmin)h+='<p class="note tlogout">Appareil connecté à l\'équipe. <button class="link" data-act="skbLogout" style="font-size:13px;color:var(--muted)">Déconnecter cet appareil</button></p>';
   return h;
 }
 
 /* ----- Feuille de saisie ----- */
 let sheet=null;
 function openPick(id){
-  if(!S.activite){toast("Choisis d'abord l'activité");return}
+  if(!S.activite){S.pendPick=id;drawActs();return}
   const p=S.produits.get(id);if(!p)return;
   const M=modesOf(p),last=ls.get("mode:"+p.id,null);
   sheet={p,n:1,mode:M.includes(last)?last:M.includes("unite")?"unite":M[0],part:ls.get("part",null),aRendre:true,autre:"",vers:null};
@@ -1131,14 +1172,14 @@ let lastFocus=null;
 function focusDialog(){const d=document.querySelector("#layer [role=dialog]");if(!d)return;d.setAttribute("tabindex","-1");const h=d.querySelector("h2");if(h){h.setAttribute("tabindex","-1");h.focus({preventScroll:true})}else d.focus({preventScroll:true})}
 function restoreFocus(){if(lastFocus&&lastFocus.isConnected)try{lastFocus.focus({preventScroll:true})}catch(e){}lastFocus=null}
 new MutationObserver(()=>{const has=!!document.querySelector("#layer [role=dialog]");document.body.style.overflow=has?"hidden":"";$("#app").inert=has;const hd=document.querySelector("header.top");if(hd)hd.inert=has}).observe(document.getElementById("layer"),{childList:true});
-document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;if(sheet){closeSheet();restoreFocus()}else if(document.querySelector("#layer [role=dialog]")){stopScan();EXP=null;$("#layer").innerHTML="";S.editProd=null;restoreFocus()}});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;S.pendPick=null;if(sheet){closeSheet();restoreFocus()}else if(document.querySelector("#layer [role=dialog]")){stopScan();EXP=null;$("#layer").innerHTML="";S.editProd=null;restoreFocus()}});
 function drawSheet(){
   const L=$("#layer");if(!sheet){L.innerHTML="";return}
   const first=!sheet._shown;sheet._shown=true;
   const p=sheet.p,canCarton=p.parCarton>1&&(p.unite||"both")!=="unite",canUnit=(p.unite||"both")!=="carton";
   const dep=S.activite==="__dep",trans=S.activite==="__trans",perte=S.activite==="__perte";
   let h='<div class="sheet-back'+(first?" enter":"")+'" data-act="closeSheet"><div class="sheet" role="dialog" aria-modal="true" aria-label="Quantité">'
-   +'<div class="row">'+badge(p)+'<div style="min-width:0"><h2>'+esc(p.nom)+'</h2><div class="note">'+(dep?(sheet.aRendre?"Prêt à une asso":"Don à une asso"):trans?"Transfert depuis "+esc(lieuNom(S.lieu)):perte?"Perte / casse":esc(actNom(S.activite)))+'</div></div></div>';
+   +'<div class="row">'+badge(p)+'<div style="min-width:0"><h2>'+esc(p.nom)+'</h2><div class="sact" style="--c:'+esc(actColor(S.activite))+'"><b><span class="sw" aria-hidden="true"></span>'+(dep?(sheet.aRendre?"Prêt à une asso":"Don à une asso"):trans?"Transfert depuis "+esc(lieuNom(S.lieu)):perte?"Perte / casse":esc(actNom(S.activite)))+'</b><button type="button" class="link" data-act="actSheet" aria-label="Changer d\'activité">changer</button></div></div></div>';
   if(dep)h+='<div class="toggle" role="group"><button data-act="pretDon" data-v="pret" aria-pressed="'+!!sheet.aRendre+'">Prêt (à rendre)</button><button data-act="pretDon" data-v="don" aria-pressed="'+!sheet.aRendre+'">Don</button></div>'
    +'<div><div class="label" style="margin-top:0">À quelle asso ?</div><div class="chips">'+cfg().partenaires.map(a=>'<button class="chip" data-act="part" data-id="'+a.id+'" aria-pressed="'+(sheet.part===a.id)+'">'+esc(a.nom)+'</button>').join("")
    +'<button class="chip ghost" data-act="part" data-id="__autre" aria-pressed="'+(sheet.part==="__autre")+'">Autre asso</button></div>'
@@ -2497,8 +2538,8 @@ function foldPanels(html){
 }
 document.addEventListener("toggle",e=>{const d=e.target;if(!d||!d.dataset||!d.dataset.fold)return;const o=new Set(ls.get("regOpen",[]));d.open?o.add(d.dataset.fold):o.delete(d.dataset.fold);ls.set("regOpen",[...o])},true);
 /* glisser le doigt sur la barre d'activité */
-(()=>{let x0=null,y0=0;document.addEventListener("pointerdown",e=>{const b=e.target.closest&&e.target.closest("[data-swipe=act]");x0=b&&!e.target.closest("button")?e.clientX:null;y0=e.clientY},{passive:true});
- document.addEventListener("pointerup",e=>{if(x0==null)return;const dx=e.clientX-x0,dy=Math.abs(e.clientY-y0);x0=null;if(Math.abs(dx)<45||dy>40)return;const L=actCycle(),i=L.indexOf(S.activite);if(i<0)return;const d=dx<0?1:-1;setActivite(L[(i+d+L.length)%L.length],d);render()},{passive:true})})();
+(()=>{let x0=null,y0=0;document.addEventListener("pointerdown",e=>{const b=e.target.closest&&e.target.closest("[data-swipe=act]");x0=b&&!e.target.closest(".actarr")?e.clientX:null;y0=e.clientY},{passive:true});
+ document.addEventListener("pointerup",e=>{if(x0==null)return;const dx=e.clientX-x0,dy=Math.abs(e.clientY-y0);x0=null;if(Math.abs(dx)<45||dy>40)return;S.swipeT=Date.now();const L=actCycle(),i=L.indexOf(S.activite);if(i<0)return;const d=dx<0?1:-1;setActivite(L[(i+d+L.length)%L.length],d);render()},{passive:true})})();
 /* petit cercle jaune au toucher des boutons */
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches)document.addEventListener("pointerdown",e=>{const t=e.target.closest&&e.target.closest("button,.chip,.tile,a.btn,summary");if(!t)return;const d=document.createElement("span");d.className="tapfx";d.style.left=e.clientX+"px";d.style.top=e.clientY+"px";document.body.appendChild(d);setTimeout(()=>d.remove(),500)},{passive:true});
 /* hauteur du bandeau du haut et des onglets, pour que les menus restent visibles en faisant défiler */
@@ -2914,7 +2955,7 @@ document.addEventListener("click",async e=>{
   const b=e.target.closest("[data-act]");if(!b)return;
   const a=b.dataset.act,id=b.dataset.id;
   if(/^(sv|st-|xSwap|jsem|mois|vueLieu|unit$|ctab$|alCmd$)/.test(a))S.animCharts=Date.now();
-  if((a==="closeSheet"||a==="closeLayer"||a==="expClose"||a==="iosClose")&&e.target!==b&&!((a==="expClose"||a==="iosClose")&&b.tagName==="BUTTON"))return;
+  if((a==="closeSheet"||a==="closeLayer"||a==="expClose"||a==="iosClose"||a==="actClose")&&e.target!==b&&!((a==="expClose"||a==="iosClose"||a==="actClose")&&b.tagName==="BUTTON"))return;
   switch(a){
   case "unit":S.unit=b.dataset.v;ls.set("unit",S.unit);render();break;
   case "view":S.view=b.dataset.v;ls.set("view",S.view);render();break;
@@ -3008,6 +3049,9 @@ document.addEventListener("click",async e=>{
   case "activite":setActivite(id,0);S.actOpen=false;render();break;
   case "actStep":{const L=actCycle(),i=L.indexOf(S.activite),v=+b.dataset.v;setActivite(i<0?L[v>0?0:L.length-1]:L[(i+v+L.length)%L.length],v);render();break}
   case "actOpen":S.actOpen=!S.actOpen;render();break;
+  case "actSheet":if(Date.now()-(S.swipeT||0)>500)drawActs();break;
+  case "actPick":{const pp=S.pendPick;S.pendPick=null;setActivite(id,0);S.actOpen=false;if(sheet){drawSheet();focusDialog()}else{$("#layer").innerHTML="";if(pp)openPick(pp);else restoreFocus()}render();break}
+  case "actClose":S.pendPick=null;if(sheet){drawSheet();focusDialog()}else{$("#layer").innerHTML="";restoreFocus()}break;
   case "vueLieu":S.vueLieu=id||null;render();break;
   case "pick":openPick(id);break;
   case "closeSheet":case "cancelSheet":closeSheet();restoreFocus();break;
