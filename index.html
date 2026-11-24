@@ -335,6 +335,10 @@ details.cat>.grid{margin:0;padding:0 10px 10px}
 .wiznav{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:22px 0 10px;position:sticky;bottom:calc(8px + env(safe-area-inset-bottom,0px));background:var(--bg);padding:8px 0}
 .wiznav .primary{flex:1;min-height:52px;font-size:16px}
 .wiz [data-act="invRapideOk"]{display:none}
+.wizact[aria-pressed="true"]::after{content:"✓";margin-left:auto;font-weight:800;font-size:18px;color:var(--accent)}
+.wzhelp{margin:4px 0 14px}.ferr{color:var(--crit);font-weight:700;margin:6px 0 0}[aria-invalid="true"]{border-color:var(--crit)!important;box-shadow:0 0 0 2px var(--crit-soft)}
+.jfil{margin-top:10px}.jcount{margin:10px 0 6px}
+details.cat.invcat>.list{margin:0;padding:0 10px 10px}
 .chip[disabled]{opacity:.55;cursor:default}
 .recap.livr{border-left:4px solid var(--brand-2)}
 .invq .it{gap:8px 10px}.invq .badge{width:38px;height:38px}
@@ -974,6 +978,7 @@ function draw(){
   else txt="Connexion…";
   sy.innerHTML='<span class="dot '+cls+'"></span><span class="st">'+esc(txt)+'</span>';sy.classList.toggle("okc",cls==="ok");sy.title=txt;
   if(S.view==="coordo"&&!coordoOK())S.view="equipe";
+  if(S.view==="equipe"&&!S.wizAuto&&!S.wizSkip&&coordoOK()&&wizardNeeded()){S.wizAuto=1;S.view="coordo";S.wiz=S.wiz||1}
   const canC=S.isAdmin||!S.db;
   $("#hdrBtn").innerHTML=S.view==="coordo"?'<button class="hbtn" data-act="view" data-v="equipe"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M15.5 5.3a3 3 0 0 1 0 5.6M17.5 14.4c1.6.7 2.6 2.2 3 4.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Équipe</button>'
     :(canC?'<button class="hbtn" data-act="goCoordo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>Gestion</button>':'');
@@ -1505,7 +1510,7 @@ function equipePanel(inWizard){
      +'<a class="btn small" href="mailto:?subject='+encodeURIComponent(m.sujet)+'&body='+encodeURIComponent(m.body)+'" target="_blank" rel="noopener">Envoyer par e-mail</a>'
      +'<button class="btn small primary" data-act="fichePdf">Fiche équipe (PDF)</button>'
      +(navigator.share&&window.SKB?'<button class="btn small" data-act="ficheShare">Partager…</button>':'')+'</div>'
-     +'<p class="note" style="margin-top:8px">La fiche tient sur deux pages : à quoi sert l\'appli, comment l\'installer, comment noter une sortie. Joins-la au mail, ou imprime-la pour le garage. Si l\'e-mail ne s\'ouvre pas, <button class="link" style="padding:0;min-height:0" data-act="copyMail">copie le message</button>.</p></div></div>'}
+     +'<p class="note" style="margin-top:8px">La fiche tient sur deux pages : à quoi sert l\'appli, comment l\'installer, comment noter une sortie. Joins-la au mail, ou imprime-la pour l\'afficher au stock. Si l\'e-mail ne s\'ouvre pas, <button class="link" style="padding:0;min-height:0" data-act="copyMail">copie le message</button>.</p></div></div>'}
   if(window.SKB&&window.SKB.inviteLink)h+='<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px"><b>Une affiche pour le local</b><p class="note">Un grand QR code à coller au stock : on le scanne en venant chercher du matériel et l\'appli s\'ouvre, sans rien installer. Un téléphone déjà connecté arrive directement sur la saisie ; un nouveau téléphone devra taper le code d\'équipe.</p><button class="btn" style="margin-top:6px" data-act="affichePdf">'+PRINT_ICO+'Affiche QR code (PDF)</button></div>';
   return h+'</div>';
 }
@@ -1564,13 +1569,19 @@ async function fichePdf(link){
 }
 
 /* ---------- Assistant de première installation ---------- */
+// Cochés d'office à l'étape 3 (socle commun validé) ; le reste du catalogue de départ est proposé décoché.
+const ESSENTIELS=new Set(["Kits d'injection","Seringues 1 ml","Stérifilt BASIC (10 µm)","Stérifilt FAST (10 µm)","Stérifilt+ (0,2 µm, antibactérien)","Stéricup","Eau stérile (dosettes)","Tampons alcoolisés","Acide ascorbique (sachets)","Garrots","Pansements","Crème cicatrisante","Kits base (pipes droites)","Kits base (pipes coudées)","Embouts","Aluminium (paquets de feuilles)","Roule-ta-paille","Sérum physiologique (dosettes)","Préservatifs externes","Préservatifs internes","Gel lubrifiant","Naloxone nasale","TROD VIH","TROD VHC","Autotests VIH","Collecteurs DASRI petits","Collecteurs DASRI grands","Gel hydroalcoolique (unidoses)"]);
+function fieldErr(el,msg){if(typeof el==="string")el=document.getElementById(el);if(!el){toast(msg);return}const eid=(el.id||"wz")+"-err";let p=document.getElementById(eid);
+  if(!p){p=document.createElement("p");p.id=eid;p.className="ferr";const h=el.id&&document.getElementById(el.id+"-h");(h||el.closest("label")||(el.id?el:el.parentElement)).after(p)}
+  p.textContent=msg;el.setAttribute("aria-invalid","true");el.setAttribute("aria-describedby",((el.getAttribute("aria-describedby")||"").replace(eid,"").trim()+" "+eid).trim());el.focus()}
+function fieldOk(el){if(el.getAttribute("aria-invalid")!=="true")return;const eid=el.id+"-err",p=document.getElementById(eid);if(p)p.remove();el.removeAttribute("aria-invalid");const d=(el.getAttribute("aria-describedby")||"").replace(eid,"").trim();if(d)el.setAttribute("aria-describedby",d);else el.removeAttribute("aria-describedby")}
 function wizardNeeded(){if(!S.isAdmin||S.dbState!=="ok")return false;if(S.wiz)return true;if(S.wizSkip)return false;return !S.config||(!S.config.assistant&&S.produits.size===0)}
 function viewWizard(st){
   const s=S.wiz||1,c=cfg(),steps=["Ta structure","Tes activités","Ton matériel","Inventaire de départ","Inviter l'équipe"];
   let h='<div class="wiz"><p class="lab-s">Première installation · étape '+s+' sur 5</p><div class="wizbar">'+steps.map((t,i)=>'<span class="'+(i+1<s?"done":i+1===s?"cur":"")+'"></span>').join("")+'</div><h1 class="wizh">'+steps[s-1]+'</h1>';
   if(s===1){const L=c.lieux.filter(l=>!l.archive);
-    h+='<label class="wizl" style="margin-bottom:14px">Nom de ta structure<input id="wzS" value="'+esc(c.nomStructure||"")+'" placeholder="Ex. CAARUD Centre-ville"></label><p>Comment s\'appelle l\'endroit où tu ranges le matériel ? Un garage, une réserve, un local…</p><label class="wizl">Nom du stock principal<input id="wzN" value="'+esc(c.nomStock&&c.nomStock!=="Stock principal"?c.nomStock:"")+'" placeholder="Ex. Garage"></label>'
-     +'<p class="note" style="margin-top:14px">Tu stockes aussi ailleurs, dans un local ou une antenne qui se réapprovisionne au stock principal ? Ajoute ces stocks intermédiaires. Sinon, laisse vide : un seul stock suffit dans la plupart des CAARUD.</p>'
+    h+='<label class="wizl">Nom de ta structure<input id="wzS" value="'+esc(c.nomStructure||"")+'" autocomplete="organization" aria-describedby="wzS-h"></label><p class="note wzhelp" id="wzS-h">Par exemple : CAARUD Centre-ville. Il figure en tête des bons de commande.</p><label class="wizl">Nom du stock principal<input id="wzN" value="'+esc(c.nomStock&&c.nomStock!=="Stock principal"?c.nomStock:"")+'" aria-describedby="wzN-h"></label><p class="note wzhelp" id="wzN-h">L\'endroit où tu ranges le matériel. Par exemple : garage, réserve, local.</p>'
+     +'<p class="note" style="margin-top:6px">Tu stockes aussi ailleurs, dans un local ou une antenne qui se réapprovisionne au stock principal ? Ajoute ces stocks intermédiaires. Sinon, laisse vide : un seul stock suffit dans la plupart des CAARUD.</p>'
      +L.filter(l=>!l.principal).map(l=>'<div class="row" style="margin-top:8px"><input id="wzL-'+l.id+'" value="'+esc(l.nom)+'" style="flex:1" aria-label="Stock intermédiaire"><button class="btn small danger" data-act="wzDelLieu" data-id="'+l.id+'">Retirer</button></div>').join("")
      +'<button class="btn small" style="margin-top:8px" data-act="wzAddLieu">Ajouter un stock intermédiaire</button>'}
   if(s===2){const have=new Set(c.activites.filter(a=>!a.archive).map(a=>norm(a.nom)));
@@ -1578,20 +1589,21 @@ function viewWizard(st){
      +ACT_PRESETS.map(([n,ic])=>'<button class="wizact" data-act="wzAct" data-v="'+esc(n)+'" data-ic="'+ic+'" aria-pressed="'+have.has(norm(n))+'">'+actIcon({icone:ic},"aic big")+'<span>'+esc(n)+'</span></button>').join("")
      +c.activites.filter(a=>!a.archive&&!ACT_PRESETS.some(p=>norm(p[0])===norm(a.nom))).map(a=>'<button class="wizact" data-act="wzActDel" data-id="'+a.id+'" aria-pressed="true">'+(actIcon(a,"aic big")||'<span class="aic big"></span>')+'<span>'+esc(a.nom)+'</span></button>').join("")+'</div>'
      +'<div class="row" style="margin-top:12px"><input id="wzA" placeholder="Autre activité…" style="flex:1;min-width:160px"><button class="btn" data-act="wzActAdd">Ajouter</button></div>'}
-  if(s===3){if(!S.wizOff)S.wizOff=new Set();const have=new Set([...S.produits.values()].map(p=>norm(p.nom)));
-    h+='<p>Voici un catalogue de départ, rangé par catégorie et par dossier. <b>Décoche ce que tu ne distribues pas</b> ; le reste se renomme ou se complète plus tard.</p><p class="note">Les conditionnements courants sont pré-remplis et marqués « à vérifier ». Les prix et fournisseurs sont facultatifs.</p>'
+  if(s===3){if(!S.wizOff)S.wizOff=new Set(STARTER.map(x=>x[0]).filter(n=>!ESSENTIELS.has(n)));const have=new Set([...S.produits.values()].map(p=>norm(p.nom)));
+    h+='<p>Voici un catalogue de départ, rangé par catégorie et par dossier. Le matériel que distribuent la plupart des CAARUD est déjà coché : <b>coche ce que tu distribues en plus, décoche ce que tu n\'as pas</b>. Le reste se renomme ou se complète plus tard.</p><p class="note">Les conditionnements courants sont pré-remplis et marqués « à vérifier ». Les prix et fournisseurs sont facultatifs.</p>'
      +'<div class="row" style="margin:10px 0"><label class="btn small">Importer un modèle d\'un autre CAARUD<input type="file" accept=".json" id="impCfg" hidden></label></div>';
-    for(const k of Object.keys(CATS)){const a=STARTER.filter(b=>b[1]===k);if(!a.length)continue;const on=a.filter(b=>!S.wizOff.has(b[0])).length;
-      h+='<details class="cat"'+dk("wz-"+k,true)+' style="--cat:var('+(CATCOL[k]||"--muted")+')"><summary><span class="cic">'+iconSvg(catIcon(k))+'</span><span class="ct">'+esc(CATS[k])+'</span><span class="cn">'+on+'/'+a.length+'</span></summary><div style="padding:0 12px 12px"><div class="row" style="gap:6px;margin-bottom:6px"><button class="btn small" data-act="wzCat" data-v="'+k+':1">Tout</button><button class="btn small" data-act="wzCat" data-v="'+k+':0">Aucun</button></div>';
+    for(const k of Object.keys(CATS)){const a=STARTER.filter(b=>catOf({categorie:b[1]})===k);if(!a.length)continue;const on=a.filter(b=>!S.wizOff.has(b[0])).length;
+      h+='<details class="cat"'+dk("wz-"+k,true)+' style="--cat:var('+(CATCOL[k]||"--muted")+')"><summary><span class="cic">'+iconSvg(catIcon(k))+'</span><span class="ct">'+esc(CATS[k])+'</span><span class="cn">'+on+'/'+a.length+'</span></summary><div style="padding:0 12px 12px"><div class="row" style="gap:6px;margin-bottom:6px"><button class="btn small" data-act="wzCat" data-v="'+k+':1">Tout cocher</button><button class="btn small" data-act="wzCat" data-v="'+k+':0">Tout décocher</button></div>';
       const gs=[...new Set(a.map(b=>b[2]))];
       for(const g of gs){h+=(g?'<div class="label" style="margin:8px 0 4px">'+esc(g)+'</div>':'')+'<div class="chips">'+a.filter(b=>b[2]===g).map(b=>{const dj=have.has(norm(b[0]));return '<button class="chip" data-act="wzTog" data-v="'+esc(b[0])+'" aria-pressed="'+(dj||!S.wizOff.has(b[0]))+'"'+(dj?' disabled title="Déjà dans ton catalogue"':'')+'>'+esc(b[0])+'</button>'}).join("")+'</div>'}
       h+='</div></details>'}
     h+='<p class="note" style="margin-top:10px">Il manque un produit ? Tu l\'ajouteras en un instant dans Réglages, ou l\'équipe le signalera.</p>'}
-  if(s===4){h+='<p>Compte le matériel une première fois : sans ce comptage, l\'appli part de zéro et toutes les alertes sont fausses. Remplis ce que tu peux, le reste se fera plus tard.</p>'+invRapide(st,ordreCat(prodsActifs()),lieux())}
+  if(s===4){h+='<p>Compte le matériel une première fois : sans ce comptage, l\'appli part de zéro et toutes les alertes sont fausses. Remplis ce que tu peux, le reste se fera plus tard.</p>'+invRapide(st,ordreCat(prodsActifs()),lieux(),true)}
   if(s===5){h+='<p>C\'est presque fini. Envoie le lien à l\'équipe, avec la fiche qui explique tout en deux pages.</p>'+equipePanel(true)+alertesPanel(true)}
-  h+='<div class="wiznav">'+(s>1?'<button class="btn" data-act="wzPrev">Retour</button>':'<button class="btn" data-act="wzSkip">Plus tard</button>')
-   +(s===4?'<button class="btn" data-act="wzNext" data-v="skip">Passer cette étape</button>':'')
-   +'<button class="btn primary" data-act="wzNext">'+(s===5?"Terminer":s===4?"Enregistrer et continuer":"Continuer")+'</button></div></div>';
+  const bz=S.invBusy?' disabled':'';
+  h+='<div class="wiznav"'+(S.invBusy?' aria-busy="true"':'')+'>'+(s>1?'<button class="btn" data-act="wzPrev"'+bz+'>Retour</button>':'<button class="btn" data-act="wzSkip">Plus tard</button>')
+   +(s===4?'<button class="btn" data-act="wzNext" data-v="skip"'+bz+'>Passer cette étape</button>':'')
+   +'<button class="btn primary" data-act="wzNext"'+bz+'>'+(s===5?"Terminer":s===4?(S.invBusy?"Enregistrement…":"Enregistrer et continuer"):"Continuer")+'</button></div></div>';
   return h;
 }
 /* ---------- Alertes par e-mail (facultatif) ----------
@@ -2260,7 +2272,7 @@ function tabBord(st0){
   const ps=prodsActifs().filter(p=>!used||used.has(p.id));
   if(!ps.length)return top+'<div class="empty">'+(used?"Aucun matériel n\'est encore passé par ce stock.":"Aucun produit actif. Va dans Réglages pour activer le matériel depuis la base RdR, ou charge des données d\'exemple pour tester.")+'</div>';
   const al=alertsList(st).filter(a=>!used||!/^<b>/.test(a[1])||ps.some(p=>a[1].startsWith('<b>'+esc(p.nom)+'</b>')));
-  let h=top+(window.SKB&&window.SKB.local?'<div class="narr" style="margin-top:12px"><b>Tu utilises Stockaarud sans compte</b><p>Le stock est gardé sur cet appareil seulement. Concrètement :</p><ul style="margin:6px 0 0 18px;padding:0"><li>un seul appareil : l\'équipe ne peut pas noter depuis ses téléphones ;</li><li>si l\'appareil est perdu ou cassé, ou si l\'historique du navigateur est effacé, tout est perdu ;</li><li>la navigation privée ne garde rien.</li></ul><p style="margin-top:6px">Télécharge une sauvegarde régulièrement, et passe en ligne dès que l\'essai est concluant : tout ce que tu as saisi sera repris.</p><div class="row" style="margin-top:8px"><button class="btn primary" data-act="goOnline">Passer en ligne</button><button class="btn" data-act="backup">Télécharger une sauvegarde</button></div></div>':'')+(!invDejaFait()?'<div class="narr" style="margin-top:12px"><b>Première étape : l\'inventaire de départ</b><p>Le stock n\'a encore jamais été compté : l\'appli part de zéro, d\'où les alertes. Compte le garage une fois, sur une seule page, et les alertes deviendront justes.</p><div class="row" style="margin-top:8px"><button class="btn primary" data-act="goInv">Faire l\'inventaire de départ</button></div></div>':'')+'<div class="alerts">'+(al.length?(()=>{const lim=(window.innerWidth||0)<900&&al.length>2&&!S.alAll?2:al.length;return al.slice(0,lim).map(([k,t,x])=>'<div class="alert '+k+'"><span>'+t+'</span>'+(x?'<button class="btn small" data-act="'+x.a+'"'+(x.id?' data-id="'+esc(x.id)+'"':'')+(x.v?' data-v="'+x.v+'"':'')+'>'+esc(x.l)+'</button>':'')+'</div>').join("")+((window.innerWidth||0)<900&&al.length>2?'<button class="link" data-act="alAll">'+(S.alAll?"Réduire":"Voir les "+al.length+" alertes")+'</button>':'')})():'<div class="alert info">Aucune alerte : tout est au-dessus du point de commande.</div>')+'</div>';
+  let h=top+(window.SKB&&window.SKB.local?'<div class="narr" style="margin-top:12px"><b>Tu utilises Stockaarud sans compte</b><p>Le stock est gardé sur cet appareil seulement. Concrètement :</p><ul style="margin:6px 0 0 18px;padding:0"><li>un seul appareil : l\'équipe ne peut pas noter depuis ses téléphones ;</li><li>si l\'appareil est perdu ou cassé, ou si l\'historique du navigateur est effacé, tout est perdu ;</li><li>la navigation privée ne garde rien.</li></ul><p style="margin-top:6px">Télécharge une sauvegarde régulièrement, et passe en ligne dès que l\'essai est concluant : tout ce que tu as saisi sera repris.</p><div class="row" style="margin-top:8px"><button class="btn primary" data-act="goOnline">Passer en ligne</button><button class="btn" data-act="backup">Télécharger une sauvegarde</button></div></div>':'')+(!invDejaFait()?'<div class="narr" style="margin-top:12px"><b>Pas encore compté</b><p>Le stock n\'a encore jamais été compté : l\'appli part de zéro, donc les alertes et les jours de stock ne veulent encore rien dire. Compte '+esc(nomLieuP())+' une fois, catégorie par catégorie, et ils deviendront justes.</p><div class="row" style="margin-top:8px"><button class="btn primary" data-act="goInv">Faire l\'inventaire de départ</button></div></div>':'')+'<div class="alerts">'+(al.length?(()=>{const lim=(window.innerWidth||0)<900&&al.length>2&&!S.alAll?2:al.length;return al.slice(0,lim).map(([k,t,x])=>'<div class="alert '+k+'"><span>'+t+'</span>'+(x?'<button class="btn small" data-act="'+x.a+'"'+(x.id?' data-id="'+esc(x.id)+'"':'')+(x.v?' data-v="'+x.v+'"':'')+'>'+esc(x.l)+'</button>':'')+'</div>').join("")+((window.innerWidth||0)<900&&al.length>2?'<button class="link" data-act="alAll">'+(S.alAll?"Réduire":"Voir les "+al.length+" alertes")+'</button>':'')})():invDejaFait()?'<div class="alert info">Aucune alerte : tout est au-dessus du point de commande.</div>':'')+'</div>';
   // budget
   const y0=Date.parse(new Date().getFullYear()+"-01-01"),M=allMvts();
   let dep=0;for(const m of M)if(m.type==="reception"&&m.t>=y0){const p=S.produits.get(m.produit);if(p)dep+=m.qte*num(p.prix)}
@@ -2342,9 +2354,9 @@ function fcBlock(p,st){
    +'<button class="link" data-act="pv-open" data-id="'+p.id+'">Tester une autre quantité dans Prévisions</button>';
 }
 function bonLignes(a,st){return a.map(p=>{const s=st[p.id],pc=p.parCarton>1?p.parCarton:1,nc=Math.ceil(s.suggere/pc),pu=num(p.prix,0);return {ref:p.refFournisseur||"",nom:p.nom,qte:pc>1?nc:s.suggere,cond:pc>1?"carton"+(nc>1?"s":"")+" de "+pc:"unité"+(s.suggere>1?"s":""),u:s.suggere,total:pu*s.suggere}})}
-function bonTexte(f,a,st){const L=bonLignes(a,st),tot=L.reduce((x,l)=>x+l.total,0);return "Commande "+cfg().nomStock+" pour "+f+" du "+new Date().toLocaleDateString("fr-FR")+"\n\n"+L.map(l=>"- "+(l.ref?l.ref+" : ":"")+l.nom+" : "+l.qte+" "+l.cond).join("\n")+(tot>0?"\n\nMontant estimé : "+eur(tot)+" TTC":"")}
+function bonTexte(f,a,st){const L=bonLignes(a,st),tot=L.reduce((x,l)=>x+l.total,0);const ns=(cfg().nomStructure||"").trim();return "Commande "+(ns?ns+" ":"")+"pour "+f+" du "+new Date().toLocaleDateString("fr-FR")+"\n\n"+L.map(l=>"- "+(l.ref?l.ref+" : ":"")+l.nom+" : "+l.qte+" "+l.cond).join("\n")+(tot>0?"\n\nMontant estimé : "+eur(tot)+" TTC":"")}
 function bonRows(ps,st){return [["Référence","Produit","Quantité","Conditionnement","Unités","Montant estimé TTC"]].concat(bonLignes(ps,st).map(l=>[l.ref,l.nom,l.qte,l.cond,l.u,l.total?eur(l.total):""]))}
-async function bonPdf(f,ps,st){const doc=await newPdf("landscape"),L=bonLignes(ps,st),tot=L.reduce((x,l)=>x+l.total,0);let y=pdfHead(doc,"Bon de commande : "+f,(cfg().nomStructure||cfg().nomStock||"")+(tot>0?" · montant estimé "+eur(tot)+" TTC":""));
+async function bonPdf(f,ps,st){const doc=await newPdf("landscape"),L=bonLignes(ps,st),tot=L.reduce((x,l)=>x+l.total,0);let y=pdfHead(doc,"Bon de commande : "+f,[(cfg().nomStructure||"").trim(),tot>0?"montant estimé "+eur(tot)+" TTC":""].filter(Boolean).join(" · "));
   const R=bonRows(ps,st);y=pdfTable(doc,y,"Bon de commande",R[0],R.slice(1));return doc}
 const encLignes=()=>S.cmds.filter(enAttente).map(c=>{const p=S.produits.get(c.produit)||{nom:"?"};return [p.nom,fmtDate(c.t),fmtQ(p,c.qte),recuOf(c)?fmtQ(p,recuOf(c)):"",recuOf(c)>0?"livrée en partie":"commandée",fournNom(p)||""]});
 const ENC_HEAD=["Produit","Commandée le","Quantité","Reçu","État","Fournisseur"];
@@ -2392,25 +2404,34 @@ function tabMvt(st){
   const RD1=rendusSet(),prets=allMvts().filter(m=>(m.type==="depannage"||m.type==="entree")&&m.aRendre&&!estRendu(m,RD1));
   h+='<div class="panel" style="margin-top:14px"><h2>Prêts et emprunts à rendre</h2>'+(prets.length?'<div class="list">'+prets.map(m=>{const p=S.produits.get(m.produit)||{nom:"?"};return '<div class="it"><span style="flex:1;min-width:150px"><b>'+esc(p.nom)+'</b> · '+esc(fmtQ(p,m.qte))+'<br><span class="note">'+(m.type==="depannage"?"Prêté à ":"Emprunté à ")+esc(assoNom(m))+' le '+fmtDate(m.t)+'</span></span><button class="btn small" data-act="rendu" data-id="'+m.id+'">'+(m.type==="depannage"?"Rendu par l\'asso":"Rendu à l\'asso")+'</button></div>'}).join("")+'</div>':'<div class="empty">Rien à rendre.</div>')+'</div>';
   if(S.sigs.length)h+='<div class="panel" style="margin-top:14px"><h2>Signalements de l\'équipe</h2><div class="list">'+S.sigs.map(s=>'<div class="it"><span style="flex:1">Produit cherché : « '+esc(s.texte)+' »</span><span class="note">'+fmtDT(s.t)+'</span><button class="btn small" data-act="delSig" data-id="'+s.id+'">Traité</button></div>').join("")+'</div></div>';
-  const J=allMvts().slice(-120).reverse();
+  const JA=allMvts(),jf=S.jf||(S.jf={ty:"",p:"",per:"",n:120}),d0=new Date();d0.setHours(0,0,0,0);
+  const jty=m=>m.type==="entree"&&m.origine==="retour"?"retour":m.type==="entree"||m.type==="reception"?"recep":m.type;
+  const from={"7":d0-6*DAY,"30":d0-29*DAY,"90":d0-89*DAY,mois:new Date(d0.getFullYear(),d0.getMonth(),1).getTime(),an:new Date(d0.getFullYear(),0,1).getTime()}[jf.per]||0,filt=!!(jf.ty||jf.p||from);
+  const JF=filt?JA.filter(m=>(!jf.ty||jty(m)===jf.ty)&&(!jf.p||m.produit===jf.p)&&m.t>=from):JA,J=JF.slice(-jf.n).reverse();
+  const JT=[["sortie","Sorties"],["recep","Réceptions et entrées"],["retour","Retours d'activité"],["perte","Pertes / casse"],["depannage","Prêts et dons"],["transfert","Transferts"],["inventaire","Inventaires"],["rupture","Ruptures signalées"]];
+  const opt=(v,t,c)=>'<option value="'+v+'"'+(v===c?" selected":"")+'>'+esc(t)+'</option>';
+  const jfil=JA.length?'<div class="form jfil"><label>Type<select id="jfT">'+opt("","Tous les types",jf.ty)+JT.map(([v,t])=>opt(v,t,jf.ty)).join("")+'</select></label><label>Produit<select id="jfP">'+opt("","Tous les produits",jf.p)+[...S.produits.values()].sort((a,b)=>a.nom.localeCompare(b.nom,"fr")).map(p=>opt(p.id,p.nom,jf.p)).join("")+'</select></label><label>Période<select id="jfD">'+[["","Depuis le début"],["7","7 derniers jours"],["30","30 derniers jours"],["mois","Ce mois-ci"],["90","3 derniers mois"],["an","Depuis le 1er janvier"]].map(([v,t])=>opt(v,t,jf.per)).join("")+'</select></label></div>'
+   +'<p class="note jcount" aria-live="polite">'+(JF.length?(J.length<JF.length?nfr(J.length)+" sur ":"")+nfr(JF.length)+" mouvement"+(JF.length>1?"s":""):"Aucun mouvement")+(filt?" avec ces filtres, sur "+nfr(JA.length)+" en tout. <button class=\"link\" data-act=\"jReset\">Tout afficher</button>":"")+'</p>':"";
   const lab={sortie:"Sortie",depannage:"Dépannage",transfert:"Transfert",reception:"Réception",entree:"Entrée",inventaire:"Inventaire",perte:"Perte / casse",rupture:"Rupture signalée"};
-  h+='<div class="panel" style="margin-top:14px"><h2>Journal des mouvements</h2><p class="note">Sans prénom. Modifie ou supprime une ligne pour corriger une erreur ; les corrections restent signalées.</p>'+(J.length?'<div class="tw"><table class="resp"><thead><tr><th>Date</th><th>Type</th><th>Produit</th><th class="n">Qté</th><th>Détail</th><th></th></tr></thead><tbody>'+J.map(m=>{const p=S.produits.get(m.produit)||{nom:"?"};
+  h+='<div class="panel" style="margin-top:14px"><h2>Journal des mouvements</h2><p class="note">Sans prénom. Modifie une ligne pour corriger une erreur : elle reste signalée « corrigé ». Une ligne supprimée disparaît du journal ; tu as quelques secondes pour annuler.</p>'+jfil+(J.length?'<div class="tw"><table class="resp"><thead><tr><th>Date</th><th>Type</th><th>Produit</th><th class="n">Qté</th><th>Détail</th><th></th></tr></thead><tbody>'+J.map(m=>{const p=S.produits.get(m.produit)||{nom:"?"};
     const det=m.type==="sortie"?actNom(m.activite):m.type==="perte"?motifNom(m.motif)+" · "+lieuNom(m.lieu):m.type==="depannage"?assoNom(m)+(m.rendBack?" (emprunt rendu)":m.aRendre?(estRendu(m,RD1)?" (prêt, rendu)":" (prêt à rendre)"):" (don)"):m.type==="transfert"?lieuNom(m.lieu)+" → "+lieuNom(m.vers):m.type==="inventaire"?"compté (théorique "+Math.round(m.theorique||0)+")":m.type==="entree"?(m.origine||"")+(m.partenaire?" · "+assoNom(m):""):lieuNom(m.lieu);
-    return '<tr><td>'+fmtDT(m.t)+(m._pending?' <span class="pill warn">en attente</span>':"")+(m.exemple?' <span class="pill mute">exemple</span>':"")+(m.histo?' <span class="pill mute">historique</span>':"")+(m.corrige||m.correction?' <span class="pill warn">corrigé</span>':"")+'</td><td>'+lab[m.type]+'</td><td>'+esc(p.nom)+'</td><td class="n">'+esc(fmtQ(p,m.qte))+'</td><td>'+esc(det)+'</td><td><span class="row" style="gap:6px;flex-wrap:nowrap;justify-content:flex-end"><button class="btn small" data-act="editMvt" data-id="'+m.id+'">Modifier</button><button class="btn small danger" data-act="delMvt" data-id="'+m.id+'" aria-label="Supprimer">Suppr.</button></span></td></tr>'}).join("")+'</tbody></table></div>':'<div class="empty">Aucun mouvement pour l\'instant.</div>')+'</div>';
+    return '<tr><td>'+fmtDT(m.t)+(m._pending?' <span class="pill warn">en attente</span>':"")+(m.exemple?' <span class="pill mute">exemple</span>':"")+(m.histo?' <span class="pill mute">historique</span>':"")+(m.corrige||m.correction?' <span class="pill warn">corrigé</span>':"")+'</td><td>'+lab[m.type]+'</td><td>'+esc(p.nom)+'</td><td class="n">'+esc(fmtQ(p,m.qte))+'</td><td>'+esc(det)+'</td><td><span class="row" style="gap:6px;flex-wrap:nowrap;justify-content:flex-end"><button class="btn small" data-act="editMvt" data-id="'+m.id+'">Modifier</button><button class="btn small danger" data-act="delMvt" data-id="'+m.id+'" aria-label="Supprimer">Suppr.</button></span></td></tr>'}).join("")+'</tbody></table></div>'+(JF.length>J.length?'<div class="row" style="margin-top:10px"><button class="btn" id="jMore" data-act="jMore">Voir les '+nfr(Math.min(120,JF.length-J.length))+' suivants</button></div>':''):'<div class="empty">'+(filt?'Aucun mouvement avec ces filtres.':'Aucun mouvement pour l\'instant.')+'</div>')+'</div>';
   return h+'<div id="mvtForms">'+F+'</div>';
 }
 
 /* Inventaire guidé */
+function nomLieuP(){const n=((principal()||{}).nom||cfg().nomStock||"").trim();return !n||norm(n)==="stock principal"?"le stock principal":"le stock « "+n+" »"}
 function invDejaFait(){return allMvts().some(m=>m.type==="inventaire")}
-function invRapide(st,ps,L){
-  const K=Object.keys(CATS);let h='<div class="panel" style="margin-top:12px"><h2>'+(invDejaFait()?"Saisie rapide de l\'inventaire":"Inventaire de départ")+'</h2><p class="note">Tout le matériel sur une seule page. Remplis seulement ce que tu as compté : les lignes vides ne changent rien. Cartons et unités en vrac s\'additionnent.</p>'
+function invRapide(st,ps,L,wiz){
+  const K=Object.keys(CATS),D=S.invDraft||{};let first=true;let h='<div class="panel" style="margin-top:12px"><h2>'+(invDejaFait()?"Saisie rapide de l\'inventaire":"Inventaire de départ")+'</h2><p class="note">'+(wiz?"Le matériel est rangé par catégorie : ouvre-en une, compte, puis passe à la suivante.":"Tout le matériel sur une seule page.")+' Remplis seulement ce que tu as compté : les lignes vides ne changent rien. Cartons et unités en vrac s\'additionnent.</p>'
    +(L.length>1?'<div class="chips" style="margin-top:8px">'+L.map(l=>'<button class="chip" data-act="invLieu" data-id="'+l.id+'" aria-pressed="'+(S.invLieu===l.id)+'">'+esc(l.nom)+'</button>').join("")+'</div>':"");
   for(const k of K){const a=ps.filter(p=>catOf(p)===k);if(!a.length)continue;
-    h+='<h3 style="margin:18px 0 6px;font-family:var(--display);font-size:16px;color:var(--fg)">'+esc(CATS[k])+'</h3><div class="list invq">'+a.map(p=>{const pc=p.parCarton>1?p.parCarton:0,theo=st[p.id].byLieu[S.invLieu]||0;
+    const nf=a.filter(p=>D["iqC-"+p.id]||D["iqU-"+p.id]).length;
+    h+=(wiz?'<details class="cat invcat"'+dk("wzi-"+k,first)+' style="--cat:var('+(CATCOL[k]||"--muted")+')"><summary><span class="cic">'+iconSvg(catIcon(k))+'</span><span class="ct">'+esc(CATS[k])+'</span><span class="note invn">'+nf+' / '+a.length+' compté'+(nf>1?'s':'')+'</span></summary>':'<h3 style="margin:18px 0 6px;font-family:var(--display);font-size:16px;color:var(--fg)">'+esc(CATS[k])+'</h3>')+'<div class="list invq">'+a.map(p=>{const pc=p.parCarton>1?p.parCarton:0,theo=st[p.id].byLieu[S.invLieu]||0;
       return '<div class="it">'+badge(p)+'<span style="flex:1;min-width:130px"><b style="font-weight:600">'+esc(p.nom)+'</b><br><span class="note">'+(p.groupe?esc(p.groupe)+' · ':'')+'théorique '+esc(fmtQ(p,theo))+'</span></span><span class="invin">'
        +(pc?'<label class="note invf">Cartons ('+pc+')<input id="iqC-'+p.id+'" type="number" min="0" inputmode="numeric" value="'+esc((S.invDraft||{})["iqC-"+p.id]||"")+'"></label>':'')
-       +'<label class="note invf">'+(pc?'+ unités':'Unités')+'<input id="iqU-'+p.id+'" type="number" min="0" inputmode="numeric" value="'+esc((S.invDraft||{})["iqU-"+p.id]||"")+'"></label></span></div>'}).join("")+'</div>'}
-  return h+'<div class="row" style="margin-top:14px;position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px))"><button class="btn primary big" data-act="invRapideOk">Enregistrer l\'inventaire</button></div></div>';
+       +'<label class="note invf">'+(pc?'+ unités':'Unités')+'<input id="iqU-'+p.id+'" type="number" min="0" inputmode="numeric" value="'+esc((S.invDraft||{})["iqU-"+p.id]||"")+'"></label></span></div>'}).join("")+'</div>'+(wiz?'</details>':'');first=false}
+  return h+'<div class="row" style="margin-top:14px;position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px))"><button class="btn primary big" data-act="invRapideOk"'+(S.invBusy?' disabled aria-busy="true">Enregistrement…':'>Enregistrer l\'inventaire')+'</button></div></div>';
 }
 /* ---------- Rapports d'inventaire : écarts entre stock théorique et stock compté ---------- */
 const eurC=v=>v.toLocaleString("fr-FR",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2});
@@ -2632,8 +2653,12 @@ function val(id){const e=document.getElementById(id);return e?e.value:""}
 async function downloadBlob(name,blob){if(!S.dl){toast("Le téléchargement n'est pas disponible dans cette vue");return}try{await S.dl.save({filename:name,data:blob})}catch(e){if(e&&e.code!=="dismissed"&&e.code!=="declined")toast("Téléchargement annulé")}}
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.id&&/^lot/.test(t.id)){S.lotDraft=S.lotDraft||{};if(t.id==="lotD")S.lotDraft.date=t.value;else if(t.id==="lotA")S.lotDraft.act=t.value;else if(t.id==="lotL")S.lotDraft.lieu=t.value;else S.lotDraft[t.id]=t.value}
   if(t&&t.id&&/^me[A-Z]-/.test(t.id)){S.matDraft=S.matDraft||{};S.matDraft[t.id]=t.type==="checkbox"?t.checked:t.value}
-  if(t&&t.id&&/^iq[CU]-/.test(t.id)){S.invDraft=S.invDraft||{};S.invDraft[t.id]=t.value}});
-async function saveInvRapide(){const st=computeStats(),sess="inv"+uid();let n=0;S.lastSess=sess;for(const p of prodsActifs()){const c=document.getElementById("iqC-"+p.id),u=document.getElementById("iqU-"+p.id);const cv=c?c.value.trim():"",uv=u?u.value.trim():"";if(cv===""&&uv==="")continue;
+  if(t&&t.id&&/^iq[CU]-/.test(t.id)){S.invDraft=S.invDraft||{};S.invDraft[t.id]=t.value;const d=t.closest("details.invcat"),n=d&&d.querySelector(".invn");if(n){const its=d.querySelectorAll(".invq>.it"),k=[...its].filter(it=>[...it.querySelectorAll("input")].some(i=>i.value.trim()!=="")).length;n.textContent=k+" / "+its.length+" compté"+(k>1?"s":"")}}
+  if(t&&t.getAttribute&&t.getAttribute("aria-invalid")==="true")fieldOk(t)});
+async function saveInvRapide(){if(S.invBusy)return 0;S.invBusy=true;try{return await saveInvRapide0()}finally{S.invBusy=false;render()}}
+async function saveInvRapide0(){const st=computeStats(),sess="inv"+uid();let n=0;S.lastSess=sess;const vals=prodsActifs().map(p=>{const c=document.getElementById("iqC-"+p.id),u=document.getElementById("iqU-"+p.id);return [p,c?c.value.trim():"",u?u.value.trim():""]});
+  if(vals.some(v=>v[1]!==""||v[2]!=="")){const bs=document.querySelectorAll('[data-act="invRapideOk"],.wiznav button');bs.forEach(x=>x.disabled=true);document.querySelectorAll('.wiznav .primary,[data-act="invRapideOk"]').forEach(m=>{m.textContent="Enregistrement…";m.setAttribute("aria-busy","true")});await new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)))}
+  for(const [p,cv,uv] of vals){if(cv===""&&uv==="")continue;
   const q=Math.max(0,Math.round(num(cv,0)*(p.parCarton>1?p.parCarton:1)+num(uv,0)));await write("set","mouvements/"+uid(),{t:Date.now(),type:"inventaire",produit:p.id,qte:q,lieu:S.invLieu||(principal()||{}).id,theorique:st[p.id].byLieu[S.invLieu||(principal()||{}).id]||0,session:sess});n++}
   if(n)S.invDraft={};
   toast(n?"Inventaire enregistré : "+n+" produit"+(n>1?"s":""):"Rien de compté pour l'instant");return n}
@@ -2915,6 +2940,7 @@ document.addEventListener("keydown",e=>{if(e.target.id==="qty"&&e.key==="Enter")
 document.addEventListener("change",async e=>{
   const t=e.target;if(/^(chartProd|svY|xR|xC|xM|bp)/.test(t.id||""))S.animCharts=Date.now();
   if(t.id==="chartProd"){S.chartProd=t.value;render()}
+  if(t.id==="jfT"||t.id==="jfP"||t.id==="jfD"){S.jf[{jfT:"ty",jfP:"p",jfD:"per"}[t.id]]=t.value;S.jf.n=120;render()}
   if(t.id==="svY"){S.svy=t.value;render()}
   if(t.id==="bpPct"){S.bp.pct=num(t.value,0);render()}if(t.id==="bpTr"){S.bp.trend=t.checked;render()}if(/^bpC-/.test(t.id)){S.bp.cat=S.bp.cat||{};S.bp.cat[t.id.slice(4)]=num(t.value,0);render()}
   if(t.id==="xR"){S.xr=t.value;if(S.xc===t.value)S.xc="aucune";render()}if(t.id==="xC"){S.xc=t.value;render()}if(t.id==="xM"){S.xm=t.value;render()}
@@ -3107,7 +3133,12 @@ document.addEventListener("click",async e=>{
     if(m.type==="depannage")await write("set","mouvements/"+uid(),{...back,type:"entree",origine:"rendu"});
     else await write("set","mouvements/"+uid(),{...back,type:"depannage",rendBack:true});
     toast(m.type==="depannage"?"Retour enregistré : le matériel est revenu en stock":"Rendu enregistré : le matériel est sorti du stock");break}
-  case "delMvt":await write("delete","mouvements/"+id);toast("Mouvement supprimé");break;
+  case "delMvt":{const m=S.mvts.find(x=>x.id===id)||allMvts().find(x=>x.id===id);if(!m)break;const path="mouvements/"+id,inDb=S.mvts.some(x=>x.id===id),{id:_i,_pending:_p,...data}=m;
+    for(const o of S.queue)if(o.path===path&&o.op==="update")Object.assign(data,o.data);
+    S.queue=S.queue.filter(o=>o.path!==path);ls.set("queue",S.queue);if(inDb)await write("delete",path);else render();
+    toast("Mouvement supprimé",async()=>{S.queue=S.queue.filter(o=>!(o.path===path&&o.op==="delete"));ls.set("queue",S.queue);await write("set",path,data);render()});break}
+  case "jMore":S.jf.n+=120;render();break;
+  case "jReset":S.jf={ty:"",p:"",per:"",n:120};render();break;
   case "invLieu":S.invLieu=id;render();break;
   case "invSkip":S.invIdx++;render();break;
   case "bonExp":{const st=computeStats(),f=b.dataset.v,ps=prodsActifs().filter(p=>st[p.id].suggere>0&&st[p.id].moy>0&&(fournNom(p)||"Sans fournisseur")===f),Rw=bonRows(ps,st);
@@ -3129,14 +3160,14 @@ document.addEventListener("click",async e=>{
   case "wzActDel":await saveConfig({activites:cfg().activites.filter(x=>x.id!==id)});break;
   case "wzActAdd":{const n=val("wzA").trim();if(!n)break;await saveConfig({activites:[...cfg().activites,{id:uid(),nom:n,icone:"ic:pin"}]});break}
   case "wzTog":{const n=b.dataset.v;if(S.wizOff.has(n))S.wizOff.delete(n);else S.wizOff.add(n);render();break}
-  case "wzCat":{const [k,on]=b.dataset.v.split(":");for(const x of STARTER)if(x[1]===k){if(on==="1")S.wizOff.delete(x[0]);else S.wizOff.add(x[0])}render();break}
+  case "wzCat":{const [k,on]=b.dataset.v.split(":");for(const x of STARTER)if(catOf({categorie:x[1]})===k){if(on==="1")S.wizOff.delete(x[0]);else S.wizOff.add(x[0])}render();break}
   case "wzNext":{const s=S.wiz||1,c=cfg();
-    if(s===1){const nom=val("wzN").trim();if(!nom){toast("Donne un nom au stock principal");break}
+    if(s===1){const nom=val("wzN").trim();if(!nom){fieldErr("wzN","Donne un nom au stock principal : celui de l\'endroit où tu ranges le matériel.");break}
       const L=(c.lieux&&c.lieux.length?c.lieux:[{id:"principal",nom,principal:true}]).map(l=>{const e=document.getElementById("wzL-"+l.id);return l.principal?{...l,nom}:e?{...l,nom:e.value.trim()||l.nom}:l});
       await saveConfig({nomStructure:val("wzS").trim(),nomStock:nom,lieux:L})}
-    if(s===2&&!c.activites.filter(x=>!x.archive).length){toast("Choisis au moins une activité");break}
+    if(s===2&&!c.activites.filter(x=>!x.archive).length){fieldErr(document.querySelector(".wizact"),"Choisis au moins une activité");break}
     if(s===3){const have=new Set([...S.produits.values()].map(p=>norm(p.nom)));let n=0;for(const x of STARTER){if(S.wizOff&&S.wizOff.has(x[0])||have.has(norm(x[0])))continue;await write("set","produits/"+slug(x[0]),starterDoc(x));n++}
-      if(!S.produits.size&&!n){toast("Garde au moins un produit");break}if(n)toast(n+" produits ajoutés")}
+      if(!S.produits.size&&!n){fieldErr(document.querySelector('.chip[data-act="wzTog"]'),"Garde au moins un produit");break}if(n)toast(n+" produits ajoutés")}
     if(s===4&&b.dataset.v!=="skip")await saveInvRapide();
     if(s===5){await saveConfig({assistant:"fait"});S.wiz=null;S.ctab="bord";window.scrollTo(0,0);toast("Stockaarud est prêt");render();break}
     S.wiz=s+1;window.scrollTo(0,0);render();break}
