@@ -3,7 +3,7 @@
 -- À coller en entier dans Supabase > SQL Editor > New query, puis « Run ».
 -- Le script peut être relancé sans risque (il ne supprime aucune donnée).
 -- Les bases déjà installées le relancent une fois pour recevoir les correctifs de sécurité de novembre 2026.
--- À la fin, il affiche un code d'installation à taper dans l'appli.
+-- Sur une base neuve, il ouvre l'installation pendant une heure : retourne dans l'appli et clique sur « Installer ».
 -- Plus tard, pour obtenir un nouveau code de responsable stock (accès perdu) :
 --   select public.code_secours();
 -- =====================================================================
@@ -159,6 +159,32 @@ $$;
 revoke execute on function public.mvt_equipe_ok from public, anon;
 grant execute on function public.mvt_equipe_ok to authenticated;
 
+-- Première installation, sans code à recopier : pendant l'heure qui suit ce script, et seulement si la base
+-- n'a encore aucun responsable stock, la personne qui branche l'appli le devient. Ensuite la porte se referme.
+create table if not exists public.installation (
+  id          int primary key default 1 check (id = 1),
+  ouverte_at  timestamptz
+);
+alter table public.installation enable row level security;
+revoke all on public.installation from anon, authenticated;
+
+create or replace function public.premiere_installation() returns text
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return null; end if;
+  perform 1 from public.installation where id = 1 for update;
+  if exists (select 1 from public.membres where role = 'coordo') then return null; end if;
+  if not exists (select 1 from public.installation where id = 1 and ouverte_at > now() - interval '1 hour') then
+    perform pg_sleep(1); return null;
+  end if;
+  insert into public.membres (user_id, role) values (auth.uid(), 'coordo')
+    on conflict (user_id) do update set role = 'coordo';
+  update public.installation set ouverte_at = null where id = 1;
+  return 'coordo';
+end $$;
+revoke execute on function public.premiere_installation from public, anon;
+grant execute on function public.premiere_installation to authenticated;
+
 -- Mise à jour partielle d'un document (fusion des champs), avec les droits de l'appelant.
 create or replace function public.doc_fusion(p_coll text, p_id text, p_patch jsonb) returns void
 language sql security invoker set search_path = public as $$
@@ -245,6 +271,13 @@ create policy "photos coordo modif" on storage.objects for update
 create policy "photos coordo suppression" on storage.objects for delete
   using (bucket_id = 'photos' and public.est_coordo());
 
--- ---------- Code d'installation ---------------------------------------
--- À taper dans l'appli, étape « Brancher l'appli ».
-select public.code_secours() as "Code d'installation (à taper dans l'appli)";
+-- ---------- Ouverture de l'installation -----------------------------
+-- Base sans responsable stock : l'installation est ouverte pendant une heure. Sinon, rien ne s'ouvre.
+insert into public.installation (id, ouverte_at)
+  values (1, case when exists (select 1 from public.membres where role = 'coordo') then null else now() end)
+on conflict (id) do update set ouverte_at = excluded.ouverte_at;
+
+select case when exists (select 1 from public.membres where role = 'coordo')
+  then 'Base à jour. Rien d''autre à faire.'
+  else 'Base prête. Retourne dans l''appli et clique sur « Installer » dans l''heure. Passé ce délai, relance ce script.'
+end as "Résultat";
