@@ -2,6 +2,7 @@
 -- Stockaarud : installation de la base Supabase
 -- À coller en entier dans Supabase > SQL Editor > New query, puis « Run ».
 -- Le script peut être relancé sans risque (il ne supprime aucune donnée).
+-- Les bases déjà installées le relancent une fois pour recevoir les correctifs de sécurité de novembre 2026.
 -- À la fin, il affiche un code d'installation à taper dans l'appli.
 -- Plus tard, pour obtenir un nouveau code de responsable stock (accès perdu) :
 --   select public.code_secours();
@@ -38,6 +39,21 @@ create table if not exists public.codes_acces (
   created_at  timestamptz not null default now()
 );
 
+-- Chaque code a une date d'expiration : 30 jours pour l'équipe, 7 jours pour un responsable stock
+-- (qui, en plus, ne sert qu'une fois). Les anciens codes reçoivent la même règle à partir de leur création.
+alter table public.codes_acces add column if not exists expire_at timestamptz;
+update public.codes_acces set expire_at = created_at + case when role = 'coordo' then interval '7 days' else interval '30 days' end
+  where expire_at is null;
+
+-- Générateur de hasard fait pour les secrets.
+create extension if not exists pgcrypto with schema extensions;
+
+create or replace function public.nouveau_code(p_len int) returns text
+language sql volatile set search_path = public as $$
+  select upper(substr(encode(extensions.gen_random_bytes(16), 'hex'), 1, p_len));
+$$;
+revoke execute on function public.nouveau_code from public, anon, authenticated;
+
 -- ---------- Fonctions utilitaires ------------------------------------
 
 create or replace function public.est_membre() returns boolean
@@ -55,17 +71,8 @@ language sql stable security definer set search_path = public as $$
   select role from public.membres where user_id = auth.uid();
 $$;
 
--- Le tout premier compte coordo (connecté par e-mail) devient coordo.
-create or replace function public.premier_coordo() returns boolean
-language plpgsql security definer set search_path = public as $$
-begin
-  if auth.uid() is null then return false; end if;
-  if coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then return false; end if;
-  if exists (select 1 from public.membres where role = 'coordo') then return false; end if;
-  insert into public.membres (user_id, role) values (auth.uid(), 'coordo')
-    on conflict (user_id) do update set role = 'coordo';
-  return true;
-end $$;
+-- Ancienne entrée « premier compte e-mail = responsable stock » : retirée (l'installation passe par un code).
+drop function if exists public.premier_coordo();
 
 -- Rejoindre avec un code d'invitation.
 create or replace function public.rejoindre(p_code text) returns text
@@ -73,9 +80,12 @@ language plpgsql security definer set search_path = public as $$
 declare r text;
 begin
   if auth.uid() is null then return null; end if;
-  select role into r from public.codes_acces where code = upper(trim(p_code)) and actif;
-  -- un code faux fait attendre une seconde : deviner un code au hasard devient très long
+  select role into r from public.codes_acces
+    where code = upper(trim(p_code)) and actif and (expire_at is null or expire_at > now());
+  -- un code faux ou expiré fait attendre une seconde : deviner un code au hasard devient très long
   if r is null then perform pg_sleep(1); return null; end if;
+  -- un code de responsable stock ne sert qu'une fois
+  if r = 'coordo' then update public.codes_acces set actif = false where code = upper(trim(p_code)); end if;
   -- un code « responsable stock » (rôle coordo) marche aussi sur un appareil sans compte
   insert into public.membres (user_id, role) values (auth.uid(), r)
     on conflict (user_id) do update set role =
@@ -91,8 +101,9 @@ begin
   if not public.est_coordo() then raise exception 'reserve au coordo'; end if;
   if p_role not in ('coordo', 'equipe') then raise exception 'role inconnu'; end if;
   -- code d'équipe : 8 caractères ; code de responsable stock : 10, car il donne accès à la gestion
-  c := upper(substr(md5(random()::text || clock_timestamp()::text), 1, case when p_role = 'coordo' then 10 else 8 end));
-  insert into public.codes_acces (code, role) values (c, p_role);
+  c := public.nouveau_code(case when p_role = 'coordo' then 10 else 8 end);
+  insert into public.codes_acces (code, role, expire_at)
+    values (c, p_role, now() + case when p_role = 'coordo' then interval '7 days' else interval '30 days' end);
   return c;
 end $$;
 
@@ -128,8 +139,8 @@ create or replace function public.code_secours() returns text
 language plpgsql security definer set search_path = public as $$
 declare c text;
 begin
-  c := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 10));
-  insert into public.codes_acces (code, role) values (c, 'coordo');
+  c := public.nouveau_code(10);
+  insert into public.codes_acces (code, role, expire_at) values (c, 'coordo', now() + interval '7 days');
   return c;
 end $$;
 revoke execute on function public.code_secours from public, anon, authenticated;
@@ -163,12 +174,15 @@ create policy "lecture membres" on public.documents for select
   using (public.est_membre() and (coll <> 'secret' or public.est_coordo()));
 
 -- Écrire : le responsable stock partout.
--- L'équipe : seulement les mouvements et les signalements, et seulement les siens pour modifier ou supprimer.
+-- L'équipe : seulement les mouvements et les signalements, et seulement les siens pour modifier ou supprimer,
+-- avec des identifiants faits de lettres, chiffres et . _ : - (rien qui puisse cacher du code).
 create policy "ecriture equipe" on public.documents for insert
-  with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()));
+  with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()
+    and id ~ '^[A-Za-z0-9_.:-]{1,80}$'));
 create policy "modif equipe" on public.documents for update
   using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()))
-  with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()));
+   with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()
+    and id ~ '^[A-Za-z0-9_.:-]{1,80}$'));
 create policy "suppression equipe" on public.documents for delete
   using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()));
 
@@ -183,10 +197,10 @@ grant select, insert, update, delete on public.documents to authenticated;
 grant select on public.membres, public.codes_acces to authenticated;
 revoke all on public.documents, public.membres, public.codes_acces from anon;
 
-revoke execute on function public.est_membre, public.est_coordo, public.mon_role, public.premier_coordo,
+revoke execute on function public.est_membre, public.est_coordo, public.mon_role,
   public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.retirer_gestion_par_code, public.doc_fusion
   from public, anon;
-grant execute on function public.est_membre, public.est_coordo, public.mon_role, public.premier_coordo,
+grant execute on function public.est_membre, public.est_coordo, public.mon_role,
   public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.retirer_gestion_par_code, public.doc_fusion
   to authenticated;
 
