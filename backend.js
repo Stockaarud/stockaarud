@@ -95,7 +95,14 @@
   /* Bouton « Connecter Supabase » : le relais crée et règle la base dans le compte Supabase du CAARUD. */
   const CONNECTER = CFG.connecter || "https://apoepftykwoztrrjtjyx.supabase.co/functions/v1/connecter";
   const OA_OK = !!CFG.connecter || location.origin === "https://stockaarud.github.io";
-  const OA_ERR = { refus: "Tu n'as pas donné l'autorisation : rien n'a été créé.", config: "La connexion automatique n'est pas disponible pour le moment. Installe à la main, ci-dessous." };
+  const OA_ERR = { refus: "Tu n'as pas donné l'autorisation : rien n'a été créé.", config: "La connexion automatique n'est pas disponible pour le moment. Installe à la main, ci-dessous.", occupe: "Le service est très demandé en ce moment : réessaie dans 10 minutes, ou installe à la main.", appli: "Recharge la page, puis réessaie." };
+  /* Un secret gardé sur cet appareil accompagne la connexion : un lien de retour ouvert ailleurs ne branche rien. */
+  function oaPartir() {
+    const a = new Uint8Array(24); crypto.getRandomValues(a);
+    const lien = [...a].map(x => x.toString(16).padStart(2, "0")).join("");
+    LS.set("oaLien", lien);
+    location.href = CONNECTER + "?retour=" + encodeURIComponent(location.origin + location.pathname) + "&lien=" + lien;
+  }
   function screenSetup(msg, oaMsg) {
     if (!setupSql) fetch("supabase/setup.sql").then(r => r.ok ? r.text() : "").then(t => { setupSql = t; }).catch(() => {});
     const st = (n, t, body) => `<div class="step"><span class="n">${n}</span><div><b class="t">${t}</b>${body}</div></div>`;
@@ -116,7 +123,7 @@
       <details id="sCD"><summary>J'ai un code d'installation</summary><p>Utile si l'heure est passée depuis le script, ou si la base a déjà été installée. Pour en obtenir un, lance <b>select public.code_secours();</b> dans l'éditeur SQL.</p><label>Code d'installation<input id="sC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters"></label></details>
       <div class="err" id="sE">${esc(msg || "")}</div><button class="btn ${OA_OK ? "" : "primary "}big" id="sGo">Installer</button>
       <button class="alt" id="sAcc">J'ai un compte responsable stock avec e-mail</button></div>${OA_OK ? "</details>" : ""}</div>`);
-    if ($("#sOA")) $("#sOA").onclick = () => { busy($("#sOA"), true); location.href = CONNECTER + "?retour=" + encodeURIComponent(location.origin + location.pathname); };
+    if ($("#sOA")) $("#sOA").onclick = () => { busy($("#sOA"), true); oaPartir(); };
     if ($("#sLocal")) $("#sLocal").onclick = () => { LS.set("local", true); location.reload(); };
     if ($("#sBack")) $("#sBack").onclick = () => { hide(); };
     $("#sCopy").onclick = () => {
@@ -203,8 +210,9 @@
       <div class="err" id="oE"></div><button class="btn primary big" id="oR" hidden>Recommencer</button><button class="alt" id="oM" hidden>Installer à la main</button></div>`);
     const lib = Object.fromEntries(E);
     const voir = (etape) => { const i = E.findIndex(e => e[0] === etape); ov.querySelectorAll("#oL li").forEach((li, n) => { const d = n < i || etape === "fini"; li.className = d ? "ok" : n === i ? "now" : "todo"; li.textContent = (d ? "✓ " : n === i ? "… " : "") + lib[li.dataset.e]; }); };
-    const stop = (m) => { if (!$("#oE")) return; $("#oE").textContent = m; $("#oP").hidden = true; $("#oR").hidden = !OA_OK; $("#oM").hidden = false; history.replaceState(null, "", location.pathname); };
-    $("#oR").onclick = () => { busy($("#oR"), true); location.href = CONNECTER + "?retour=" + encodeURIComponent(location.origin + location.pathname); };
+    const lien = LS.get("oaLien", "");
+    const stop = (m) => { LS.del("oaLien"); if (!$("#oE")) return; $("#oE").textContent = m; $("#oP").hidden = true; $("#oR").hidden = !OA_OK; $("#oM").hidden = false; history.replaceState(null, "", location.pathname); };
+    $("#oR").onclick = () => { busy($("#oR"), true); oaPartir(); };
     $("#oM").onclick = () => screenSetup(" ");
     const pause = ms => new Promise(r => setTimeout(r, ms));
     const entrer = async (ref, k, reprise) => {
@@ -230,10 +238,10 @@
       for (;;) {
         if (!ov || !$("#oL")) return;
         let j = null;
-        try { const r = await fetch(CONNECTER, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "avance", jeton }) }); j = await r.json(); } catch (e) { j = null; }
+        try { const r = await fetch(CONNECTER, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "avance", jeton, lien }) }); j = await r.json(); } catch (e) { j = null; }
         if (!j || !j.etape || j.etape === "relais") { if (++rates > 12) return stop("Le relais ne répond pas. Vérifie ta connexion internet, puis recharge la page."); await pause(4000); continue; }
         rates = 0;
-        if (j.etape === "fini") { voir("fini"); try { await entrer(j.ref, j.cle, j.reprise); } catch (e) { stop(netMsg(e)); } return; }
+        if (j.etape === "fini") { LS.del("oaLien"); voir("fini"); try { await entrer(j.ref, j.cle, j.reprise); } catch (e) { stop(netMsg(e)); } return; }
         if (j.etape === "echec" || j.etape === "expire") return stop(j.erreur || "L'installation n'a pas abouti.");
         voir(j.etape); await pause(j.etape === "creation" ? 5000 : 2500);
       }
