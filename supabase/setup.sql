@@ -145,6 +145,20 @@ begin
 end $$;
 revoke execute on function public.code_secours from public, anon, authenticated;
 
+-- Ce qu'un membre de l'équipe a le droit d'enregistrer : les gestes que l'appli lui propose
+-- (sortie, prêt ou don, transfert, perte, livraison d'une commande existante, rupture, passages, matériel récupéré),
+-- avec une quantité qui est un vrai nombre, positif et raisonnable. Les entrées hors commande et les inventaires
+-- restent réservés au responsable stock.
+create or replace function public.mvt_equipe_ok(d jsonb) returns boolean
+language sql stable set search_path = public as $$
+  select coalesce(d->>'type', '') in ('sortie', 'depannage', 'transfert', 'perte', 'reception', 'rupture', 'passage', 'recup')
+    and (d->'qte' is null or (jsonb_typeof(d->'qte') = 'number' and (d->>'qte')::numeric >= 0
+         and (d->>'qte')::numeric <= case when d->>'type' in ('reception', 'transfert') then 100000 else 10000 end))
+    and (d->>'type' <> 'reception' or exists (select 1 from public.documents c where c.coll = 'commandes' and c.id = d->>'commande'));
+$$;
+revoke execute on function public.mvt_equipe_ok from public, anon;
+grant execute on function public.mvt_equipe_ok to authenticated;
+
 -- Mise à jour partielle d'un document (fusion des champs), avec les droits de l'appelant.
 create or replace function public.doc_fusion(p_coll text, p_id text, p_patch jsonb) returns void
 language sql security invoker set search_path = public as $$
@@ -175,14 +189,15 @@ create policy "lecture membres" on public.documents for select
 
 -- Écrire : le responsable stock partout.
 -- L'équipe : seulement les mouvements et les signalements, et seulement les siens pour modifier ou supprimer,
--- avec des identifiants faits de lettres, chiffres et . _ : - (rien qui puisse cacher du code).
+-- avec des identifiants faits de lettres, chiffres et . _ : - (rien qui puisse cacher du code),
+-- et des mouvements conformes à mvt_equipe_ok ci-dessus.
 create policy "ecriture equipe" on public.documents for insert
   with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()
-    and id ~ '^[A-Za-z0-9_.:-]{1,80}$'));
+    and id ~ '^[A-Za-z0-9_.:-]{1,80}$' and (coll <> 'mouvements' or public.mvt_equipe_ok(data))));
 create policy "modif equipe" on public.documents for update
   using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()))
    with check (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()
-    and id ~ '^[A-Za-z0-9_.:-]{1,80}$'));
+    and id ~ '^[A-Za-z0-9_.:-]{1,80}$' and (coll <> 'mouvements' or public.mvt_equipe_ok(data))));
 create policy "suppression equipe" on public.documents for delete
   using (public.est_coordo() or (public.est_membre() and coll in ('mouvements', 'signalements') and auteur = auth.uid()));
 
