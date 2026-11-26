@@ -73,6 +73,8 @@
   #skb .step .t{display:block;margin-bottom:2px}#skb .step p b{color:var(--fg,#14201d)}#skb .step p{font-size:14px;color:var(--muted,#53645d);margin:0 0 6px}
   #skb .row{display:flex;flex-wrap:wrap;gap:8px}#skb a.btn{text-decoration:none;display:inline-flex;align-items:center}
   #skb textarea{width:100%;box-sizing:border-box;font:13px ui-monospace,monospace;padding:8px;border:1px solid var(--line,#d0dbd5);border-radius:8px;word-break:break-all}
+  #skb .fine{font-size:13px;color:var(--muted,#53645d)}#skb .man{display:flex;flex-direction:column;gap:10px;padding-top:4px}
+  #skb .chk.big{font-size:15px;gap:10px;margin:4px 0}#skb .chk.big .now{color:var(--fg,#14201d)}#skb .chk.big .todo{color:var(--muted,#53645d);font-weight:500}
   #skb .alt{background:none;border:0;color:var(--accent,#1f4d3a);text-decoration:underline;font:inherit;cursor:pointer;padding:10px 0;min-height:44px;text-align:left}`;
   let ov = null;
   function show(html) {
@@ -90,13 +92,21 @@
   function refFromKey(k) {
     try { const p = JSON.parse(atob(k.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); return p.ref || ""; } catch (e) { return ""; }
   }
-  function screenSetup(msg) {
+  /* Bouton « Connecter Supabase » : le relais crée et règle la base dans le compte Supabase du CAARUD. */
+  const CONNECTER = CFG.connecter || "https://apoepftykwoztrrjtjyx.supabase.co/functions/v1/connecter";
+  const OA_OK = !!CFG.connecter || location.origin === "https://stockaarud.github.io";
+  const OA_ERR = { refus: "Tu n'as pas donné l'autorisation : rien n'a été créé.", config: "La connexion automatique n'est pas disponible pour le moment. Installe à la main, ci-dessous." };
+  function screenSetup(msg, oaMsg) {
     if (!setupSql) fetch("supabase/setup.sql").then(r => r.ok ? r.text() : "").then(t => { setupSql = t; }).catch(() => {});
     const st = (n, t, body) => `<div class="step"><span class="n">${n}</span><div><b class="t">${t}</b>${body}</div></div>`;
     const lk = (href, t) => `<a class="btn small" href="${href}" target="_blank" rel="noopener">${t}</a>`;
     const hasLocal = !!localStorage.getItem("skb:local:cache");
     show((LOCAL ? `<div class="card"><h2>Passer en ligne</h2><p>Crée la base de ton CAARUD avec les 3 étapes ci-dessous. À la fin, tout ce que tu as saisi sur cet appareil y sera envoyé, et tu pourras inviter l'équipe.</p><button class="alt" id="sBack">Plus tard : revenir à l'appli</button></div>` : `<div class="card"><h2>Essayer tout de suite, sans compte</h2><p>Rien à installer : le stock est gardé sur cet appareil. Pratique pour découvrir l'appli avec ton vrai matériel.</p><p><b>Les limites :</b> un seul appareil (l'équipe ne peut pas noter depuis ses téléphones), et tout est perdu si l'appareil casse ou si l'historique du navigateur est effacé. Pour un usage en équipe, il faudra passer en ligne : ce que tu auras saisi sera repris.</p><button class="btn primary big" id="sLocal">${hasLocal ? "Reprendre sur cet appareil" : "Commencer sur cet appareil"}</button></div>`) + `<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
-      <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit. Compte 15 minutes, sur un ordinateur.</p>
+      <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit.</p>
+      ${OA_OK ? `<p>Le plus simple : connecte ton compte Supabase (gratuit, tu peux le créer au passage). Stockaarud y crée la base et la règle tout seul, en 2 à 3 minutes.</p>
+      <div class="err" id="sOE">${esc(oaMsg || "")}</div><button class="btn primary big" id="sOA">Connecter Supabase</button>
+      <p class="fine">L'autorisation sert uniquement à l'installation, puis elle est effacée. Tu peux aussi la retirer toi-même dans Supabase.</p>
+      <details id="sMan"${msg || sbKey ? " open" : ""}><summary>Installer à la main (15 minutes)</summary><div class="man">` : `<p>Compte 15 minutes, sur un ordinateur.</p><div class="man">`}
       ${st(1, "Créer la base", `<p>Crée un compte gratuit Supabase, puis un projet « stockaarud » en Europe avec <b>New project</b> (nouveau projet). Attends qu'il soit prêt (1 à 2 minutes).</p><div class="row">${lk("https://supabase.com/dashboard/new", "Créer le projet")}</div>`)}
       ${st(2, "Préparer la base", `<p>Copie le script, ouvre <b>SQL Editor</b> (l'éditeur SQL), colle-le et clique sur <b>Run</b> (exécuter).</p><div class="row"><button class="btn small" id="sCopy">Copier le script</button>${lk(SB_DASH + "sql/new", "Ouvrir l'éditeur SQL")}</div><textarea id="sSql" readonly hidden rows="4" aria-label="Script d'installation"></textarea><p>Puis active <b>Allow anonymous sign-ins</b> (autoriser les connexions anonymes) et clique sur <b>Save</b> (enregistrer) : c'est ce qui permet d'entrer avec un code, sans mot de passe.</p><div class="row">${lk(SB_DASH + "auth/providers", "Ouvrir le réglage")}</div>`)}
       ${st(3, "Brancher l'appli", `<p>Ouvre la page des clés. Copie la <b>Publishable key</b> (la clé publique, elle commence par sb_publishable) et colle-la ici. Copie aussi l'adresse de cette page, dans la barre du navigateur.</p><div class="row">${lk(SB_DASH + "settings/api-keys", "Ouvrir la page des clés")}</div>`)}
@@ -104,8 +114,9 @@
       <label id="sUL" hidden>Adresse de la page des clés, ou du projet<input id="sU" placeholder="https://supabase.com/dashboard/project/…" value="${esc(sbUrl)}" autocomplete="off"></label>
       <ul class="chk" id="sChk" hidden aria-live="polite"><li id="sC1"></li><li id="sC2"></li></ul>
       <details id="sCD"><summary>J'ai un code d'installation</summary><p>Utile si l'heure est passée depuis le script, ou si la base a déjà été installée. Pour en obtenir un, lance <b>select public.code_secours();</b> dans l'éditeur SQL.</p><label>Code d'installation<input id="sC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters"></label></details>
-      <div class="err" id="sE">${esc(msg || "")}</div><button class="btn primary big" id="sGo">Installer</button>
-      <button class="alt" id="sAcc">J'ai un compte responsable stock avec e-mail</button></div>`);
+      <div class="err" id="sE">${esc(msg || "")}</div><button class="btn ${OA_OK ? "" : "primary "}big" id="sGo">Installer</button>
+      <button class="alt" id="sAcc">J'ai un compte responsable stock avec e-mail</button></div>${OA_OK ? "</details>" : ""}</div>`);
+    if ($("#sOA")) $("#sOA").onclick = () => { busy($("#sOA"), true); location.href = CONNECTER + "?retour=" + encodeURIComponent(location.origin + location.pathname); };
     if ($("#sLocal")) $("#sLocal").onclick = () => { LS.set("local", true); location.reload(); };
     if ($("#sBack")) $("#sBack").onclick = () => { hide(); };
     $("#sCopy").onclick = () => {
@@ -175,10 +186,58 @@
           else { $("#sE").textContent = "Cette base a déjà un responsable stock, ou le script est passé depuis plus d'une heure. Relance le script (étape 2) puis réessaie, ou utilise un code d'installation."; $("#sCD").open = true; }
           return;
         }
-        if (LOCAL || localStorage.getItem("skb:local:cache")) LS.set("migrate", refOf(u));
-        LS.del("local"); LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
+        brancher(u, k);
       } catch (e) { busy(b, false); $("#sE").textContent = netMsg(e); }
     };
+  }
+  function brancher(u, k) {
+    if (LOCAL || localStorage.getItem("skb:local:cache")) LS.set("migrate", refOf(u));
+    LS.del("local"); LS.set("url", u); LS.set("key", k); addBase(u, k);
+    history.replaceState(null, "", location.pathname); location.reload();
+  }
+  /* Suite de « Connecter Supabase » : on suit l'installation pas à pas, puis on entre dans la base. */
+  function screenConnect(jeton) {
+    const E = [["autorise", "Autorisation reçue"], ["creation", "Création de la base (1 à 2 minutes)"], ["script", "Préparation de la base"], ["reglage", "Connexions par code"], ["cles", "Branchement de l'appli"]];
+    show(`<div class="card"><h2>Installation en cours</h2><p id="oP">Laisse cette page ouverte : tout se fait tout seul, en 2 à 3 minutes.</p>
+      <ul class="chk big" id="oL" aria-live="polite">${E.map(e => `<li data-e="${e[0]}" class="todo">${esc(e[1])}</li>`).join("")}</ul>
+      <div class="err" id="oE"></div><button class="btn primary big" id="oR" hidden>Recommencer</button><button class="alt" id="oM" hidden>Installer à la main</button></div>`);
+    const lib = Object.fromEntries(E);
+    const voir = (etape) => { const i = E.findIndex(e => e[0] === etape); ov.querySelectorAll("#oL li").forEach((li, n) => { const d = n < i || etape === "fini"; li.className = d ? "ok" : n === i ? "now" : "todo"; li.textContent = (d ? "✓ " : n === i ? "… " : "") + lib[li.dataset.e]; }); };
+    const stop = (m) => { if (!$("#oE")) return; $("#oE").textContent = m; $("#oP").hidden = true; $("#oR").hidden = !OA_OK; $("#oM").hidden = false; history.replaceState(null, "", location.pathname); };
+    $("#oR").onclick = () => { busy($("#oR"), true); location.href = CONNECTER + "?retour=" + encodeURIComponent(location.origin + location.pathname); };
+    $("#oM").onclick = () => screenSetup(" ");
+    const pause = ms => new Promise(r => setTimeout(r, ms));
+    const entrer = async (ref, k, reprise) => {
+      const u = "https://" + ref + ".supabase.co";
+      const c = window.supabase.createClient(u, k, { auth: { persistSession: true, autoRefreshToken: true } });
+      let r = null;
+      /* Le réglage vient d'être posé : il met parfois quelques secondes à être pris en compte. */
+      for (let i = 0; i < 8; i++) { r = await c.auth.signInAnonymously(); if (!r.error) break; await pause(3000); }
+      if (r.error) return stop("La base est prête, mais l'entrée a échoué (" + netMsg(r.error) + "). Recharge la page dans une minute.");
+      let j = null;
+      for (let i = 0; i < 6; i++) { j = await c.rpc("premiere_installation"); if (!j.error || !/schema cache|function/i.test(j.error.message || "")) break; await pause(3000); }
+      if (j.error) { await c.auth.signOut(); return stop(netMsg(j.error)); }
+      if (j.data !== "coordo") {
+        await c.auth.signOut();
+        if (LOCAL) return stop("Ton compte Supabase a déjà une base « stockaarud » avec un responsable stock. Demande-lui un code pour la rejoindre.");
+        LS.set(refOf(u) + ":msg", "Cette base existe déjà et a un responsable stock : entre avec ton code."); LS.set("url", u); LS.set("key", k); addBase(u, k);
+        history.replaceState(null, "", location.pathname); location.reload(); return;
+      }
+      brancher(u, k);
+    };
+    (async () => {
+      let rates = 0;
+      for (;;) {
+        if (!ov || !$("#oL")) return;
+        let j = null;
+        try { const r = await fetch(CONNECTER, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "avance", jeton }) }); j = await r.json(); } catch (e) { j = null; }
+        if (!j || !j.etape || j.etape === "relais") { if (++rates > 12) return stop("Le relais ne répond pas. Vérifie ta connexion internet, puis recharge la page."); await pause(4000); continue; }
+        rates = 0;
+        if (j.etape === "fini") { voir("fini"); try { await entrer(j.ref, j.cle, j.reprise); } catch (e) { stop(netMsg(e)); } return; }
+        if (j.etape === "echec" || j.etape === "expire") return stop(j.erreur || "L'installation n'a pas abouti.");
+        voir(j.etape); await pause(j.etape === "creation" ? 5000 : 2500);
+      }
+    })();
   }
 
   function screenLogin(msg) {
@@ -525,6 +584,11 @@
   });
 
   /* ---------- Démarrage ---------- */
+  const hCx = /^#connecter-(erreur-[a-z]+|[a-f0-9]{64})$/.exec(location.hash);
+  if (hCx && window.supabase) {
+    if (hCx[1].startsWith("erreur-")) { history.replaceState(null, "", location.pathname); const m = OA_ERR[hCx[1].slice(7)] || "La connexion à Supabase n'a pas abouti. Réessaie, ou installe à la main."; if (LOCAL || !sbUrl) { screenSetup("", m); if (!LOCAL) return; } }
+    else { screenConnect(hCx[1]); if (!LOCAL) return; }
+  }
   if (LOCAL) { role = "coordo"; uid = "local"; synced = true; try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {} resolveReady(true); return; }
   if (!sbUrl || !sbKey || !window.supabase) { screenSetup(!window.supabase ? "La bibliothèque Supabase n'a pas pu se charger : vérifie la connexion internet." : ""); return; }
   try { sb = window.supabase.createClient(sbUrl, sbKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }); }
