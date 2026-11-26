@@ -40,3 +40,23 @@ insert into public.abonnes_bases (email, ref)
   select distinct email, split_part(cle, '|', 1) from public.envois
   where cle not like 'conf|%' and split_part(cle, '|', 1) ~ '^[a-z0-9]{20}$'
 on conflict do nothing;
+
+-- Bouton « Connecter Supabase » (novembre 2026) : suivi d'une installation en cours.
+-- Une ligne vit 30 minutes au plus. L'autorisation y est chiffrée avec un jeton que seul
+-- le navigateur du CAARUD détient, et effacée dès que la base est prête.
+create table if not exists public.connexions (
+  id       text primary key,
+  etat     text not null,
+  verifier text,
+  retour   text,
+  jeton    text,
+  ref      text,
+  cle      text,
+  essais   int not null default 0,
+  reprise  boolean not null default false,
+  cree_at  timestamptz not null default now(),
+  maj_at   timestamptz not null default now()
+);
+create index if not exists connexions_cree_at on public.connexions (cree_at);
+alter table public.connexions enable row level security;
+revoke all on public.connexions from anon, authenticated;
