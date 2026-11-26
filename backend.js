@@ -75,6 +75,10 @@
   #skb textarea{width:100%;box-sizing:border-box;font:13px ui-monospace,monospace;padding:8px;border:1px solid var(--line,#d0dbd5);border-radius:8px;word-break:break-all}
   #skb .fine{font-size:13px;color:var(--muted,#53645d)}#skb .man{display:flex;flex-direction:column;gap:10px;padding-top:4px}
   #skb .chk.big{font-size:15px;gap:10px;margin:4px 0}#skb .chk.big .now{color:var(--fg,#14201d)}#skb .chk.big .todo{color:var(--muted,#53645d);font-weight:500}
+  #skb ul.gains{margin:0;padding:0;list-style:none;display:grid;gap:8px}#skb ul.gains li{display:flex;gap:10px;align-items:center;font-weight:700}#skb ul.gains li span{flex:none;width:34px;height:34px;border-radius:10px;background:var(--bg,#f2f5f3);display:grid;place-items:center;font-size:18px}
+  #skb a.demo{color:var(--accent,#1f4d3a);font-weight:700;display:flex;align-items:center;min-height:44px;margin:-6px 0}
+  #skb ol.quoi{margin:0;padding:0;list-style:none;display:grid;gap:8px;counter-reset:q}#skb ol.quoi li{display:flex;gap:10px;font-size:14px;color:var(--muted,#53645d)}#skb ol.quoi li::before{counter-increment:q;content:counter(q);flex:none;width:22px;height:22px;border-radius:50%;background:var(--brand-2,#f2b705);color:var(--brand-ink,#14201d);display:grid;place-items:center;font-weight:800;font-size:12px}#skb ol.quoi b{color:var(--fg,#14201d)}
+  #skb .mot{font-weight:700;color:var(--accent,#1f4d3a)}#skb .bar{height:10px;border-radius:5px;background:var(--line,#d0dbd5);overflow:hidden}#skb .bar span{display:block;height:100%;background:linear-gradient(90deg,var(--accent,#1f4d3a),var(--brand-2,#f2b705));border-radius:5px;transition:width .6s ease}
   #skb .alt{background:none;border:0;color:var(--accent,#1f4d3a);text-decoration:underline;font:inherit;cursor:pointer;padding:10px 0;min-height:44px;text-align:left}`;
   let ov = null;
   function show(html) {
@@ -108,9 +112,16 @@
     const st = (n, t, body) => `<div class="step"><span class="n">${n}</span><div><b class="t">${t}</b>${body}</div></div>`;
     const lk = (href, t) => `<a class="btn small" href="${href}" target="_blank" rel="noopener">${t}</a>`;
     const hasLocal = !!localStorage.getItem("skb:local:cache");
-    show((LOCAL ? `<div class="card"><h2>Passer en ligne</h2><p>Crée la base de ton CAARUD avec les 3 étapes ci-dessous. À la fin, tout ce que tu as saisi sur cet appareil y sera envoyé, et tu pourras inviter l'équipe.</p><button class="alt" id="sBack">Plus tard : revenir à l'appli</button></div>` : `<div class="card"><h2>Essayer tout de suite, sans compte</h2><p>Rien à installer : le stock est gardé sur cet appareil. Pratique pour découvrir l'appli avec ton vrai matériel.</p><p><b>Les limites :</b> un seul appareil (l'équipe ne peut pas noter depuis ses téléphones), et tout est perdu si l'appareil casse ou si l'historique du navigateur est effacé. Pour un usage en équipe, il faudra passer en ligne : ce que tu auras saisi sera repris.</p><button class="btn primary big" id="sLocal">${hasLocal ? "Reprendre sur cet appareil" : "Commencer sur cet appareil"}</button></div>`) + `<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
-      <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit.</p>
-      ${OA_OK ? `<p>Le plus simple : connecte ton compte Supabase (gratuit, tu peux le créer au passage). Stockaarud y crée la base et la règle tout seul, en 2 à 3 minutes.</p>
+    show((LOCAL ? `<div class="card"><h2>Passer en ligne</h2><p>Crée la base de ton CAARUD ci-dessous : 3 minutes, même depuis ce téléphone. À la fin, tout ce que tu as saisi sur cet appareil y sera envoyé, et tu pourras inviter l'équipe.</p><button class="alt" id="sBack">Plus tard : revenir à l'appli</button></div>` : `<div class="card"><h2>Essayer tout de suite, sans compte</h2><p>Rien à installer : le stock est gardé sur cet appareil. Pratique pour découvrir l'appli avec ton vrai matériel.</p><p><b>Les limites :</b> un seul appareil (l'équipe ne peut pas noter depuis ses téléphones), et tout est perdu si l'appareil casse ou si l'historique du navigateur est effacé. Pour un usage en équipe, il faudra passer en ligne : ce que tu auras saisi sera repris.</p><button class="btn primary big" id="sLocal">${hasLocal ? "Reprendre sur cet appareil" : "Commencer sur cet appareil"}</button></div>`) + `<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
+      <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><ul class="gains"><li><span aria-hidden="true">📦</span>Les commandes se calculent toutes seules</li><li><span aria-hidden="true">🔔</span>Une alerte avant chaque rupture</li><li><span aria-hidden="true">📊</span>Les chiffres du rapport d'activité en un clic</li></ul>
+      <a class="demo" href="https://stockaarud.github.io/demo/" target="_blank" rel="noopener">Voir la démo, avec un CAARUD fictif (2 minutes) ›</a>
+      <a class="demo" href="https://stockaarud.github.io/docs/presentation-direction-stockaarud.pdf" target="_blank" rel="noopener">Une page pour convaincre ta direction (PDF) ›</a>
+      <p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit.</p>
+      ${OA_OK ? `<p>Le plus simple : connecte ton compte Supabase (gratuit, tu peux le créer au passage). Stockaarud y crée la base et la règle tout seul, en 2 à 3 minutes. Ça marche aussi depuis un téléphone.</p>
+      <p><b>Ce qui va se passer :</b></p><ol class="quoi">
+        <li><span>Supabase te demande de <b>te connecter</b>, ou de <b>créer un compte gratuit</b>.</span></li>
+        <li><span>Une page en anglais te demande d'<b>autoriser Stockaarud</b>. Vérifie que l'organisation proposée est bien la tienne, puis valide.</span></li>
+        <li><span>Tu reviens ici et <b>tout se fait tout seul</b>. Ensuite, 5 petites étapes pour ton stock et ton équipe.</span></li></ol>
       <div class="err" id="sOE">${esc(oaMsg || "")}</div><button class="btn primary big" id="sOA">Connecter Supabase</button>
       <p class="fine">L'autorisation sert uniquement à l'installation, puis elle est effacée. Tu peux aussi la retirer toi-même dans Supabase.</p>
       <details id="sMan"${msg || sbKey ? " open" : ""}><summary>Installer à la main (15 minutes)</summary><div class="man">` : `<p>Compte 15 minutes, sur un ordinateur.</p><div class="man">`}
@@ -205,11 +216,12 @@
   /* Suite de « Connecter Supabase » : on suit l'installation pas à pas, puis on entre dans la base. */
   function screenConnect(jeton) {
     const E = [["autorise", "Autorisation reçue"], ["creation", "Création de la base (1 à 2 minutes)"], ["script", "Préparation de la base"], ["reglage", "Connexions par code"], ["cles", "Branchement de l'appli"]];
-    show(`<div class="card"><h2>Installation en cours</h2><p id="oP">Laisse cette page ouverte : tout se fait tout seul, en 2 à 3 minutes.</p>
+    show(`<div class="card"><h2>Installation en cours</h2><p class="mot" id="oT">C'est parti !</p><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span id="oB" style="width:8%"></span></div><p id="oP">Laisse cette page ouverte : tout se fait tout seul, en 2 à 3 minutes.</p>
       <ul class="chk big" id="oL" aria-live="polite">${E.map(e => `<li data-e="${e[0]}" class="todo">${esc(e[1])}</li>`).join("")}</ul>
       <div class="err" id="oE"></div><button class="btn primary big" id="oR" hidden>Recommencer</button><button class="alt" id="oM" hidden>Installer à la main</button></div>`);
     const lib = Object.fromEntries(E);
-    const voir = (etape) => { const i = E.findIndex(e => e[0] === etape); ov.querySelectorAll("#oL li").forEach((li, n) => { const d = n < i || etape === "fini"; li.className = d ? "ok" : n === i ? "now" : "todo"; li.textContent = (d ? "✓ " : n === i ? "… " : "") + lib[li.dataset.e]; }); };
+    const MOT = { autorise: ["C'est parti !", 15], creation: ["Supabase construit ta base : c'est le plus long.", 40], script: ["On y est presque !", 75], reglage: ["Dernière ligne droite !", 88], cles: ["Dernière ligne droite !", 95], fini: ["Ta base est prête 🎉", 100] };
+    const voir = (etape) => { const i = E.findIndex(e => e[0] === etape); const mo = MOT[etape]; if (mo && $("#oT")) { $("#oT").textContent = mo[0]; $("#oB").style.width = mo[1] + "%"; $("#oB").parentNode.setAttribute("aria-valuenow", mo[1]); } ov.querySelectorAll("#oL li").forEach((li, n) => { const d = n < i || etape === "fini"; li.className = d ? "ok" : n === i ? "now" : "todo"; li.textContent = (d ? "✓ " : n === i ? "… " : "") + lib[li.dataset.e]; }); };
     const lien = LS.get("oaLien", "");
     const stop = (m) => { LS.del("oaLien"); if (!$("#oE")) return; $("#oE").textContent = m; $("#oP").hidden = true; $("#oR").hidden = !OA_OK; $("#oM").hidden = false; history.replaceState(null, "", location.pathname); };
     $("#oR").onclick = () => { busy($("#oR"), true); oaPartir(); };

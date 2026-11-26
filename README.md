@@ -13,11 +13,11 @@ Les données ne passent jamais par une base commune.
 
 ---
 
-## Installer Stockaarud pour votre CAARUD (environ 15 minutes)
+## Installer Stockaarud pour votre CAARUD (3 minutes, ou 15 à la main)
 
 Il faut seulement un compte gratuit **Supabase**, qui garde vos données. Pas besoin de GitHub, ni de mot de passe à retenir.
 
-Ouvrez <https://stockaarud.github.io/stockaarud/> sur un ordinateur, à l'écran **Installer Stockaarud pour mon CAARUD**.
+Ouvrez <https://stockaarud.github.io/stockaarud/>, sur téléphone ou sur ordinateur, à l'écran **Installer Stockaarud pour mon CAARUD**.
 
 **Le plus simple : le bouton « Connecter Supabase ».** Vous vous connectez à Supabase (ou créez un compte gratuit), vous autorisez Stockaarud, et la base est créée et réglée toute seule en 2 à 3 minutes. L'autorisation ne sert qu'à l'installation : elle est effacée dès que la base est prête. Le code du relais qui fait ce travail est dans `relais/connecter/`.
 
