@@ -69,6 +69,7 @@
   #skb .err{color:var(--crit,#b3332a);font-weight:700;min-height:1.2em}
   #skb .code{font:800 26px var(--display,"Archivo",sans-serif);letter-spacing:.25em;text-align:center;text-transform:uppercase}
   #skb .step{display:flex;gap:10px;align-items:flex-start}#skb .step .n{flex:none;width:28px;height:28px;border-radius:50%;background:var(--accent,#1f4d3a);color:#fff;display:grid;place-items:center;font-weight:800}
+  #skb .chk{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:4px;font-size:14px;font-weight:700}#skb .chk li:empty{display:none}#skb .chk .ok{color:var(--good,#1f6b45)}#skb .chk .ko{color:var(--crit,#b3261e)}#skb details{margin-top:12px}#skb details summary{cursor:pointer;font-weight:700;padding:10px 0}#skb details p{font-size:14px;color:var(--muted,#53645d);margin:0 0 6px}
   #skb .step .t{display:block;margin-bottom:2px}#skb .step p b{color:var(--fg,#14201d)}#skb .step p{font-size:14px;color:var(--muted,#53645d);margin:0 0 6px}
   #skb .row{display:flex;flex-wrap:wrap;gap:8px}#skb a.btn{text-decoration:none;display:inline-flex;align-items:center}
   #skb textarea{width:100%;box-sizing:border-box;font:13px ui-monospace,monospace;padding:8px;border:1px solid var(--line,#d0dbd5);border-radius:8px;word-break:break-all}
@@ -94,15 +95,15 @@
     const st = (n, t, body) => `<div class="step"><span class="n">${n}</span><div><b class="t">${t}</b>${body}</div></div>`;
     const lk = (href, t) => `<a class="btn small" href="${href}" target="_blank" rel="noopener">${t}</a>`;
     const hasLocal = !!localStorage.getItem("skb:local:cache");
-    show((LOCAL ? `<div class="card"><h2>Passer en ligne</h2><p>Crée la base de ton CAARUD avec les 4 étapes ci-dessous. À la fin, tout ce que tu as saisi sur cet appareil y sera envoyé, et tu pourras inviter l'équipe.</p><button class="alt" id="sBack">Plus tard : revenir à l'appli</button></div>` : `<div class="card"><h2>Essayer tout de suite, sans compte</h2><p>Rien à installer : le stock est gardé sur cet appareil. Pratique pour découvrir l'appli avec ton vrai matériel.</p><p><b>Les limites :</b> un seul appareil (l'équipe ne peut pas noter depuis ses téléphones), et tout est perdu si l'appareil casse ou si l'historique du navigateur est effacé. Pour un usage en équipe, il faudra passer en ligne : ce que tu auras saisi sera repris.</p><button class="btn primary big" id="sLocal">${hasLocal ? "Reprendre sur cet appareil" : "Commencer sur cet appareil"}</button></div>`) + `<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
+    show((LOCAL ? `<div class="card"><h2>Passer en ligne</h2><p>Crée la base de ton CAARUD avec les 3 étapes ci-dessous. À la fin, tout ce que tu as saisi sur cet appareil y sera envoyé, et tu pourras inviter l'équipe.</p><button class="alt" id="sBack">Plus tard : revenir à l'appli</button></div>` : `<div class="card"><h2>Essayer tout de suite, sans compte</h2><p>Rien à installer : le stock est gardé sur cet appareil. Pratique pour découvrir l'appli avec ton vrai matériel.</p><p><b>Les limites :</b> un seul appareil (l'équipe ne peut pas noter depuis ses téléphones), et tout est perdu si l'appareil casse ou si l'historique du navigateur est effacé. Pour un usage en équipe, il faudra passer en ligne : ce que tu auras saisi sera repris.</p><button class="btn primary big" id="sLocal">${hasLocal ? "Reprendre sur cet appareil" : "Commencer sur cet appareil"}</button></div>`) + `<div class="card"><h2>Tu fais partie d'une équipe ?</h2><p>Scanne le QR code donné par ton responsable stock, ou ouvre le lien qu'il t'a envoyé. Tout se règle tout seul.</p></div>
       <div class="card"><h2>Installer Stockaarud pour mon CAARUD</h2><p>Chaque CAARUD a sa propre base de données, gratuite, que personne d'autre ne voit. Compte 15 minutes, sur un ordinateur.</p>
       ${st(1, "Créer la base", `<p>Crée un compte gratuit Supabase, puis un projet « stockaarud » en Europe avec <b>New project</b> (nouveau projet). Attends qu'il soit prêt (1 à 2 minutes).</p><div class="row">${lk("https://supabase.com/dashboard/new", "Créer le projet")}</div>`)}
-      ${st(2, "Installer les tables", `<p>Copie le script, ouvre <b>SQL Editor</b> (l'éditeur SQL), colle-le et clique sur <b>Run</b> (exécuter). Note le <b>code d'installation</b> affiché en bas.</p><div class="row"><button class="btn small" id="sCopy">Copier le script</button>${lk(SB_DASH + "sql/new", "Ouvrir l'éditeur SQL")}</div><textarea id="sSql" readonly hidden rows="4" aria-label="Script d'installation"></textarea>`)}
-      ${st(3, "Autoriser les connexions par code", `<p>Active <b>Allow anonymous sign-ins</b> (autoriser les connexions anonymes), puis <b>Save</b> (enregistrer).</p><div class="row">${lk(SB_DASH + "auth/providers", "Ouvrir le réglage")}</div>`)}
-      ${st(4, "Brancher l'appli", `<p>Copie la clé <b>anon public</b>, la clé publique (onglet « Legacy API keys », les anciennes clés d'API), et colle-la ici, avec le code d'installation.</p><div class="row">${lk(SB_DASH + "settings/api-keys/legacy", "Ouvrir la page des clés")}</div>`)}
-      <label>Clé anon public (la clé publique)<textarea id="sK" rows="3" autocomplete="off" spellcheck="false">${esc(sbKey)}</textarea></label>
-      <label id="sUL" hidden>Adresse du projet (Project URL)<input id="sU" placeholder="https://xxxx.supabase.co" value="${esc(sbUrl)}" autocomplete="off"></label>
-      <label>Code d'installation<input id="sC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters"></label>
+      ${st(2, "Préparer la base", `<p>Copie le script, ouvre <b>SQL Editor</b> (l'éditeur SQL), colle-le et clique sur <b>Run</b> (exécuter).</p><div class="row"><button class="btn small" id="sCopy">Copier le script</button>${lk(SB_DASH + "sql/new", "Ouvrir l'éditeur SQL")}</div><textarea id="sSql" readonly hidden rows="4" aria-label="Script d'installation"></textarea><p>Puis active <b>Allow anonymous sign-ins</b> (autoriser les connexions anonymes) et clique sur <b>Save</b> (enregistrer) : c'est ce qui permet d'entrer avec un code, sans mot de passe.</p><div class="row">${lk(SB_DASH + "auth/providers", "Ouvrir le réglage")}</div>`)}
+      ${st(3, "Brancher l'appli", `<p>Ouvre la page des clés. Copie la <b>Publishable key</b> (la clé publique, elle commence par sb_publishable) et colle-la ici. Copie aussi l'adresse de cette page, dans la barre du navigateur.</p><div class="row">${lk(SB_DASH + "settings/api-keys", "Ouvrir la page des clés")}</div>`)}
+      <label>Clé publique (Publishable key)<textarea id="sK" rows="2" autocomplete="off" spellcheck="false">${esc(sbKey)}</textarea></label>
+      <label id="sUL" hidden>Adresse de la page des clés, ou du projet<input id="sU" placeholder="https://supabase.com/dashboard/project/…" value="${esc(sbUrl)}" autocomplete="off"></label>
+      <ul class="chk" id="sChk" hidden aria-live="polite"><li id="sC1"></li><li id="sC2"></li></ul>
+      <details id="sCD"><summary>J'ai un code d'installation</summary><p>Utile si l'heure est passée depuis le script, ou si la base a déjà été installée. Pour en obtenir un, lance <b>select public.code_secours();</b> dans l'éditeur SQL.</p><label>Code d'installation<input id="sC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters"></label></details>
       <div class="err" id="sE">${esc(msg || "")}</div><button class="btn primary big" id="sGo">Installer</button>
       <button class="alt" id="sAcc">J'ai un compte responsable stock avec e-mail</button></div>`);
     if ($("#sLocal")) $("#sLocal").onclick = () => { LS.set("local", true); location.reload(); };
@@ -114,27 +115,66 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(setupSql).then(done, () => { ta.hidden = false; ta.value = setupSql; ta.select(); });
       else { ta.hidden = false; ta.value = setupSql; ta.select(); }
     };
-    const chk = () => { const k = $("#sK").value.trim(); $("#sUL").hidden = !k || !!refFromKey(k); };
-    $("#sK").oninput = chk; chk();
+    /* L'adresse : celle du projet, ou n'importe quelle page du tableau de bord Supabase (elle contient l'identifiant du projet). */
+    const urlOf = (k) => {
+      const ref = refFromKey(k); if (ref) return "https://" + ref + ".supabase.co";
+      const t = $("#sU").value.trim(), m = t.match(/project\/([a-z0-9]{20})(?:[/?#]|$)/) || t.match(/([a-z0-9]{20})\.supabase\.co/) || t.match(/^([a-z0-9]{20})$/);
+      return m ? "https://" + m[1] + ".supabase.co" : "";
+    };
+    /* Vérification en direct : dès que la clé et l'adresse sont là, on dit ce qui est prêt et ce qui manque. */
+    let chkT = 0, chkN = 0;
+    const li = (el, ok, t) => { el.className = ok === true ? "ok" : ok === false ? "ko" : ""; el.textContent = (ok === true ? "✓ " : ok === false ? "✗ " : "… ") + t; };
+    const verifier = async () => {
+      const k = $("#sK").value.trim(), u = urlOf(k), n = ++chkN, box = $("#sChk");
+      if (k.length < 20 || !u) { box.hidden = true; return null; }
+      box.hidden = false; li($("#sC1"), null, "Vérification de la base…"); li($("#sC2"), null, "Vérification des connexions par code…");
+      const out = { tables: null, anon: null, cle: true };
+      try {
+        const r = await fetch(u + "/rest/v1/rpc/ping", { method: "POST", headers: { apikey: k, authorization: "Bearer " + k, "content-type": "application/json" }, body: "{}" });
+        if (r.status === 401 || r.status === 403) out.cle = false; else out.tables = r.ok;
+      } catch (e) { out.net = true; }
+      try {
+        const r = await fetch(u + "/auth/v1/settings", { headers: { apikey: k } });
+        if (r.ok) { const j = await r.json(); out.anon = !!(j && j.external && j.external.anonymous_users); } else if (r.status === 401 || r.status === 403) out.cle = false;
+      } catch (e) { out.net = true; }
+      if (n !== chkN) return out;
+      if (out.net && out.tables === null && out.anon === null) { li($("#sC1"), false, "Base introuvable : vérifie l'adresse et ta connexion internet."); $("#sC2").textContent = ""; return out; }
+      if (!out.cle) { li($("#sC1"), false, "Cette clé n'est pas reconnue par ce projet : recopie la Publishable key."); $("#sC2").textContent = ""; return out; }
+      li($("#sC1"), out.tables, out.tables ? "Base préparée" : "Le script n'est pas encore passé (étape 2).");
+      li($("#sC2"), out.anon, out.anon ? "Connexions par code autorisées" : "Il reste à activer « Allow anonymous sign-ins » (étape 2).");
+      if (out.tables && out.anon) $("#sE").textContent = "";
+      return out;
+    };
+    const chk = () => { const k = $("#sK").value.trim(); $("#sUL").hidden = !k || !!refFromKey(k); clearTimeout(chkT); chkT = setTimeout(verifier, 600); };
+    $("#sK").oninput = chk; $("#sU").oninput = chk; chk();
+    window.addEventListener("focus", () => { if ($("#sChk") && !$("#sChk").hidden) verifier(); });
     $("#sAcc").onclick = () => {
-      const k = $("#sK").value.trim(), ref = refFromKey(k), u = ref ? "https://" + ref + ".supabase.co" : $("#sU").value.trim().replace(/\/+$/, "");
-      if (!/^https:\/\/.+/.test(u) || k.length < 20) { $("#sE").textContent = "Colle d'abord la clé anon de ta base (étape 4)."; return; }
+      const k = $("#sK").value.trim(), u = urlOf(k);
+      if (!u || k.length < 20) { $("#sE").textContent = "Colle d'abord la clé publique de ta base et son adresse (étape 3)."; return; }
       LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
     };
     $("#sGo").onclick = async () => {
-      const k = $("#sK").value.trim(), ref = refFromKey(k), code = $("#sC").value.trim().toUpperCase(), b = $("#sGo");
-      const u = ref ? "https://" + ref + ".supabase.co" : $("#sU").value.trim().replace(/\/+$/, "");
-      if (k.length < 20) { $("#sE").textContent = "Colle la clé anon public (étape 4)."; return; }
-      if (!/^https:\/\/.+/.test(u)) { $("#sE").textContent = "Indique aussi l'adresse du projet (https://…supabase.co)."; return; }
-      if (code.length < 6) { $("#sE").textContent = "Entre le code d'installation affiché après le script (étape 2)."; return; }
+      const k = $("#sK").value.trim(), code = $("#sC").value.trim().toUpperCase(), b = $("#sGo"), u = urlOf(k);
+      $("#sE").textContent = "";
+      if (k.length < 20) { $("#sE").textContent = "Colle la clé publique (étape 3)."; return; }
+      if (!u) { $("#sE").textContent = "Colle aussi l'adresse de la page des clés (elle commence par https://supabase.com/dashboard/project/)."; return; }
+      if (code && code.length < 6) { $("#sE").textContent = "Ce code d'installation est trop court."; return; }
       busy(b, true);
       try {
+        const v = await verifier();
+        if (v && v.cle && v.tables === false) { busy(b, false); $("#sE").textContent = "Le script n'est pas encore passé : fais l'étape 2, puis réessaie."; return; }
+        if (v && v.cle && v.anon === false) { busy(b, false); $("#sE").textContent = "Les connexions par code ne sont pas encore autorisées : active « Allow anonymous sign-ins » (étape 2), puis réessaie."; return; }
         const c = window.supabase.createClient(u, k, { auth: { persistSession: true, autoRefreshToken: true } });
         const r = await c.auth.signInAnonymously();
-        if (r.error) { busy(b, false); $("#sE").textContent = /anonymous/i.test(r.error.message) ? "Les connexions par code ne sont pas encore autorisées : fais l'étape 3, puis réessaie." : /api key|invalid/i.test(r.error.message) ? "Cette clé n'est pas reconnue : vérifie que c'est bien la clé « anon public »." : netMsg(r.error); return; }
-        const j = await c.rpc("rejoindre", { p_code: code });
-        if (j.error) { busy(b, false); $("#sE").textContent = /function|rejoindre/i.test(j.error.message) ? "Les tables ne sont pas installées : fais l'étape 2, puis réessaie." : netMsg(j.error); await c.auth.signOut(); return; }
-        if (j.data !== "coordo") { busy(b, false); $("#sE").textContent = "Ce code d'installation n'est pas valide ou a expiré (7 jours, une seule utilisation). Dans Supabase, lance « select public.code_secours(); » pour en obtenir un nouveau."; await c.auth.signOut(); return; }
+        if (r.error) { busy(b, false); $("#sE").textContent = /anonymous/i.test(r.error.message) ? "Les connexions par code ne sont pas encore autorisées : active « Allow anonymous sign-ins » (étape 2), puis réessaie." : /api key|invalid/i.test(r.error.message) ? "Cette clé n'est pas reconnue : vérifie que c'est bien la Publishable key de ce projet." : netMsg(r.error); return; }
+        const j = code ? await c.rpc("rejoindre", { p_code: code }) : await c.rpc("premiere_installation");
+        if (j.error) { busy(b, false); $("#sE").textContent = /function|rejoindre|premiere_installation|schema cache/i.test(j.error.message) ? "La base n'est pas à jour : refais l'étape 2 (copie le script et relance-le), puis réessaie." : netMsg(j.error); await c.auth.signOut(); return; }
+        if (j.data !== "coordo") {
+          busy(b, false); await c.auth.signOut();
+          if (code) $("#sE").textContent = "Ce code d'installation n'est pas valide ou a expiré (7 jours, une seule utilisation). Dans Supabase, lance « select public.code_secours(); » pour en obtenir un nouveau.";
+          else { $("#sE").textContent = "Cette base a déjà un responsable stock, ou le script est passé depuis plus d'une heure. Relance le script (étape 2) puis réessaie, ou utilise un code d'installation."; $("#sCD").open = true; }
+          return;
+        }
         if (LOCAL || localStorage.getItem("skb:local:cache")) LS.set("migrate", refOf(u));
         LS.del("local"); LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
       } catch (e) { busy(b, false); $("#sE").textContent = netMsg(e); }

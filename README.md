@@ -20,9 +20,10 @@ Il faut seulement un compte gratuit **Supabase**, qui garde vos données. Pas be
 Ouvrez <https://stockaarud.github.io/stockaarud/> sur un ordinateur : l'écran **Installer Stockaarud pour mon CAARUD** vous guide, avec un bouton pour chaque étape.
 
 1. **Créer la base** : créez un compte sur Supabase, de préférence avec une adresse du CAARUD, puis un projet « stockaarud » dans une région en Europe.
-2. **Installer les tables** : cliquez sur **Copier le script**, puis **Ouvrir l'éditeur SQL**. Collez, cliquez sur **Run** et notez le **code d'installation** affiché en bas.
-3. **Autoriser les connexions par code** : **Ouvrir le réglage**, activez **Allow anonymous sign-ins**, puis **Save**.
-4. **Brancher l'appli** : **Ouvrir la page des clés**, copiez la clé **anon public** (onglet « Legacy API keys ») et collez-la dans l'appli avec le code d'installation. Cliquez sur **Installer**.
+2. **Préparer la base** : cliquez sur **Copier le script**, puis **Ouvrir l'éditeur SQL**. Collez et cliquez sur **Run**. Puis **Ouvrir le réglage**, activez **Allow anonymous sign-ins** et **Save**.
+3. **Brancher l'appli** : **Ouvrir la page des clés**, copiez la **Publishable key** et l'adresse de la page, collez-les dans l'appli. Elle vérifie que la base est prête. Cliquez sur **Installer** dans l'heure qui suit le script : aucun code à recopier.
+
+Si l'heure est passée, relancez le script. Si l'accès de responsable stock est perdu, lancez `select public.code_secours();` dans l'éditeur SQL et entrez le code obtenu sous « J'ai un code d'installation ».
 
 L'**installation guidée** démarre ensuite, en 5 écrans : le stock, les activités, le matériel (catalogue de départ d'environ 60 produits, ou modèle d'un autre CAARUD), l'inventaire de départ et l'invitation de l'équipe (QR code, lien, e-mail tout prêt, **fiche équipe en PDF**).
 
@@ -96,7 +97,7 @@ Le script `supabase/setup.sql` peut être relancé sans risque : il ne supprime 
 - l'équipe ne peut modifier ou supprimer que ses propres saisies (le responsable stock peut tout corriger) ;
 - les codes d'équipe passent à 8 caractères, et un code faux fait attendre une seconde.
 
-Le code d'installation affiché à la fin est un nouveau code de responsable stock : gardez-le ou ignorez-le.
+Sur une base déjà installée, le script affiche « Base à jour » et n'ouvre aucun accès.
 
 ## Licence
 
