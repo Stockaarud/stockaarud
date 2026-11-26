@@ -105,4 +105,8 @@ Sur une base déjà installée, le script affiche « Base à jour » et n'ouvre 
 
 ## Licence
 
-Stockaarud est un logiciel libre, distribué sous licence MIT : voir [LICENSE](LICENSE).
+Stockaarud est un logiciel libre, distribué sous la licence publique de l'Union européenne, **EUPL 1.2** : voir [LICENSE](LICENSE). Le texte officiel existe dans les 23 langues de l'Union, dont le [français](https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32017D0863), et chaque version a la même valeur.
+
+En bref : chacun peut utiliser, copier et modifier Stockaarud, y compris pour un autre CAARUD. Une version modifiée qui est diffusée, ou mise à disposition en ligne, doit rester sous EUPL avec son code source accessible.
+
+Les bibliothèques du dossier `vendor/` (supabase-js, jsPDF, fflate, qrcode-generator) gardent leur propre licence (MIT).
