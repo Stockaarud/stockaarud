@@ -19,6 +19,8 @@ const SCRIPT = Deno.env.get("SETUP_SQL_URL") ?? "https://raw.githubusercontent.c
 const RETOURS = (Deno.env.get("RETOURS") ?? "https://stockaarud.github.io/stockaarud/").split(",").map((s) => s.trim()).filter(Boolean);
 const NOM = "stockaarud", REGION = "eu-west-3";
 const DUREE_MIN = 30;
+// Au-delà de ce nombre de départs en 10 minutes (tous CAARUD confondus), le relais refuse les suivants.
+const MAX_DEPARTS_10MIN = Number(Deno.env.get("MAX_DEPARTS_10MIN") ?? "100");
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -62,7 +64,10 @@ async function mgmt(tok: string, path: string, init: RequestInit = {}) {
 }
 const msgDe = (x: { j: any; t: string }) => String((x.j && (x.j.message || x.j.error || x.j.msg)) || x.t || "").slice(0, 300);
 
-type Ligne = { id: string; etat: string; verifier: string | null; retour: string | null; jeton: string | null; ref: string | null; cle: string | null; essais: number; reprise: boolean; cree_at: string };
+type Ligne = { id: string; etat: string; verifier: string | null; retour: string | null; jeton: string | null; ref: string | null; cle: string | null; lien: string | null; essais: number; reprise: boolean; cree_at: string };
+// Secret de l'appareil : l'appli le garde de son côté et doit le redonner pour avancer.
+// Un lien de retour ouvert sur un autre appareil ne sert donc à rien.
+const lienOk = (s: string) => /^[a-f0-9]{32,64}$/.test(s);
 
 async function menage() {
   await sb.from("connexions").delete().lt("cree_at", new Date(Date.now() - DUREE_MIN * 60000).toISOString());
@@ -75,10 +80,14 @@ async function maj(id: string, v: Record<string, unknown>) {
 async function depart(url: URL) {
   const retour = retourOk(url.searchParams.get("retour") || RETOURS[0]);
   if (!retour) return json({ erreur: "retour" }, 400);
+  const lien = (url.searchParams.get("lien") || "").toLowerCase();
+  if (!lienOk(lien)) return vers(retour + "#connecter-erreur-appli");
   if (!CLIENT_SECRET) return vers(retour + "#connecter-erreur-config");
   await menage();
+  const { count } = await sb.from("connexions").select("id", { count: "exact", head: true }).like("id", "d:%").gt("cree_at", new Date(Date.now() - 600000).toISOString());
+  if ((count ?? 0) >= MAX_DEPARTS_10MIN) return vers(retour + "#connecter-erreur-occupe");
   const etat = hex(alea(24)), verifier = b64u(alea(48));
-  const { error } = await sb.from("connexions").insert({ id: "d:" + etat, etat: "attente", verifier, retour });
+  const { error } = await sb.from("connexions").insert({ id: "d:" + etat, etat: "attente", verifier, retour, lien: hex(await sha(lien)) });
   if (error) return vers(retour + "#connecter-erreur-relais");
   const q = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: MOI, response_type: "code", state: etat, code_challenge: b64u(await sha(verifier)), code_challenge_method: "S256" });
   return vers(API + "/v1/oauth/authorize?" + q.toString());
@@ -103,18 +112,21 @@ async function retourSupabase(url: URL) {
   try { j = await r.json(); } catch (_) { j = null; }
   if (!r.ok || !j || !j.access_token) { console.error("echange", r.status, JSON.stringify(j).slice(0, 200)); return vers(retour + "#connecter-erreur-echange"); }
   const jeton = hex(alea(32));
-  const { error } = await sb.from("connexions").insert({ id: hex(await sha(jeton)), etat: "autorise", jeton: await chiffrer(jeton, j.access_token), retour });
+  const { error } = await sb.from("connexions").insert({ id: hex(await sha(jeton)), etat: "autorise", jeton: await chiffrer(jeton, j.access_token), retour, lien: l.lien });
   if (error) return vers(retour + "#connecter-erreur-relais");
   return vers(retour + "#connecter-" + jeton);
 }
 
 /* 3. L'appli appelle « avance » toutes les quelques secondes : chaque appel fait un pas. */
-async function avance(jeton: string) {
+async function avance(jeton: string, lien: string) {
   if (!/^[a-f0-9]{64}$/.test(jeton)) return json({ erreur: "jeton" }, 400);
+  await menage();
   const id = hex(await sha(jeton));
   const { data } = await sb.from("connexions").select("*").eq("id", id).maybeSingle();
   const l = data as Ligne | null;
   if (!l || Date.now() - new Date(l.cree_at).getTime() > DUREE_MIN * 60000) return json({ etape: "expire", erreur: "Cette connexion a expiré : relance-la." });
+  // Même réponse qu'un jeton inconnu : on ne dit pas à un tiers que le jeton existe.
+  if (!lienOk(lien) || !l.lien || hex(await sha(lien)) !== l.lien) return json({ etape: "expire", erreur: "Ce lien d'installation n'a pas été lancé depuis cet appareil : rien n'a été branché. Relance « Connecter Supabase » ici." });
   if (l.etat === "fini") return json({ etape: "fini", ref: l.ref, cle: l.cle, reprise: l.reprise });
   if (l.etat === "echec") return json({ etape: "echec", erreur: l.cle || "L'installation n'a pas abouti." });
   let tok = "";
@@ -215,7 +227,7 @@ Deno.serve(async (req) => {
     }
     if (req.method === "POST") {
       const b = await req.json().catch(() => ({}));
-      if (b.action === "avance") return await avance(String(b.jeton || ""));
+      if (b.action === "avance") return await avance(String(b.jeton || ""), String(b.lien || "").toLowerCase());
       return json({ erreur: "action" }, 400);
     }
     return json({ erreur: "methode" }, 405);
