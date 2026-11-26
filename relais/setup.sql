@@ -58,5 +58,7 @@ create table if not exists public.connexions (
   maj_at   timestamptz not null default now()
 );
 create index if not exists connexions_cree_at on public.connexions (cree_at);
+-- Empreinte du secret gardé par l'appareil qui a lancé la connexion (novembre 2026).
+alter table public.connexions add column if not exists lien text;
 alter table public.connexions enable row level security;
 revoke all on public.connexions from anon, authenticated;
