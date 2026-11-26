@@ -39,11 +39,12 @@ create table if not exists public.codes_acces (
   created_at  timestamptz not null default now()
 );
 
--- Chaque code a une date d'expiration : 30 jours pour l'équipe, 7 jours pour un responsable stock
--- (qui, en plus, ne sert qu'une fois). Les anciens codes reçoivent la même règle à partir de leur création.
+-- Un code de responsable stock expire au bout de 7 jours et ne sert qu'une fois : il donne tous les droits.
+-- Le code d'équipe, lui, n'expire pas (il est imprimé sur l'affiche du local) : il reste valable
+-- jusqu'à ce que le responsable stock le désactive, et ne donne que les droits de l'équipe.
 alter table public.codes_acces add column if not exists expire_at timestamptz;
-update public.codes_acces set expire_at = created_at + case when role = 'coordo' then interval '7 days' else interval '30 days' end
-  where expire_at is null;
+update public.codes_acces set expire_at = created_at + interval '7 days' where role = 'coordo' and expire_at is null;
+update public.codes_acces set expire_at = null where role = 'equipe' and expire_at is not null;
 
 -- Générateur de hasard fait pour les secrets.
 create extension if not exists pgcrypto with schema extensions;
@@ -103,7 +104,7 @@ begin
   -- code d'équipe : 8 caractères ; code de responsable stock : 10, car il donne accès à la gestion
   c := public.nouveau_code(case when p_role = 'coordo' then 10 else 8 end);
   insert into public.codes_acces (code, role, expire_at)
-    values (c, p_role, now() + case when p_role = 'coordo' then interval '7 days' else interval '30 days' end);
+    values (c, p_role, case when p_role = 'coordo' then now() + interval '7 days' end);
   return c;
 end $$;
 
