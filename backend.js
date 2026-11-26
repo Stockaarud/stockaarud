@@ -134,7 +134,7 @@
         if (r.error) { busy(b, false); $("#sE").textContent = /anonymous/i.test(r.error.message) ? "Les connexions par code ne sont pas encore autorisées : fais l'étape 3, puis réessaie." : /api key|invalid/i.test(r.error.message) ? "Cette clé n'est pas reconnue : vérifie que c'est bien la clé « anon public »." : netMsg(r.error); return; }
         const j = await c.rpc("rejoindre", { p_code: code });
         if (j.error) { busy(b, false); $("#sE").textContent = /function|rejoindre/i.test(j.error.message) ? "Les tables ne sont pas installées : fais l'étape 2, puis réessaie." : netMsg(j.error); await c.auth.signOut(); return; }
-        if (j.data !== "coordo") { busy(b, false); $("#sE").textContent = "Ce code d'installation n'est pas valide. Relance le script pour en obtenir un nouveau."; await c.auth.signOut(); return; }
+        if (j.data !== "coordo") { busy(b, false); $("#sE").textContent = "Ce code d'installation n'est pas valide ou a expiré (7 jours, une seule utilisation). Dans Supabase, lance « select public.code_secours(); » pour en obtenir un nouveau."; await c.auth.signOut(); return; }
         if (LOCAL || localStorage.getItem("skb:local:cache")) LS.set("migrate", refOf(u));
         LS.del("local"); LS.set("url", u); LS.set("key", k); addBase(u, k); location.reload();
       } catch (e) { busy(b, false); $("#sE").textContent = netMsg(e); }
@@ -167,7 +167,7 @@
         if (!s.session) { const r = await sb.auth.signInAnonymously(); if (r.error) throw r.error; }
         const { data, error } = await sb.rpc("rejoindre", { p_code: code });
         if (error) throw error;
-        if (!data) { busy(b, false); $("#tE").textContent = "Code inconnu ou désactivé. Demande un nouveau code au responsable stock."; return; }
+        if (!data) { busy(b, false); $("#tE").textContent = "Code inconnu, désactivé ou expiré. Demande un nouveau lien au responsable stock."; return; }
         LS.del("pendingCode"); BK.set("code", code); await enter();
       } catch (e) { busy(b, false); $("#tE").textContent = netMsg(e, "La connexion a échoué. Vérifie que les connexions anonymes sont activées dans Supabase."); }
     };
@@ -205,7 +205,7 @@
     $("#kOut").onclick = () => logout();
     $("#kGo").onclick = async () => {
       const { data, error } = await sb.rpc("rejoindre", { p_code: $("#kC").value.trim().toUpperCase() });
-      if (error || data !== "coordo") { $("#kE").textContent = error ? netMsg(error) : "Ce code n'est pas un code de responsable stock valide."; return; }
+      if (error || data !== "coordo") { $("#kE").textContent = error ? netMsg(error) : "Ce code n'est pas un code de responsable stock valide, ou il a déjà servi ou expiré."; return; }
       await enter();
     };
   }
@@ -226,7 +226,7 @@
     let r = null;
     try {
       const { data, error } = await sb.rpc("mon_role"); if (error) throw error; r = data;
-      if (!r && !anon) { const p = await sb.rpc("premier_coordo"); if (p.data) r = "coordo"; }
+      
     } catch (e) {
       if (role && BK.get("uid", null) === uid) r = role; // hors ligne : on garde le dernier rôle connu
       else { screenLogin(netMsg(e)); return; }
