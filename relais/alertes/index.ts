@@ -15,10 +15,12 @@ const MAX_PAR_ADRESSE_JOUR = 20;   // alertes par adresse et par jour
 const MAX_TOTAL_JOUR = 270;        // sous le plafond gratuit de Brevo (300 par jour)
 const MAX_CONFIRMATIONS_JOUR = 60; // mails de confirmation par jour, toutes adresses confondues
 const DELAI_CONFIRMATION_H = 6;    // pas plus d'un mail de confirmation par adresse toutes les 6 h
+const MAX_PAR_BASE_JOUR = 80;      // alertes par CAARUD et par jour : un abus ne bloque pas les autres CAARUD
+const MAX_CONF_PAR_BASE_JOUR = 15; // mails de confirmation par CAARUD et par jour
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type, authorization, apikey, x-client-info",
+  "Access-Control-Allow-Headers": "content-type, authorization, apikey, x-client-info, x-stk-base",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 const json = (o: unknown, status = 200) =>
@@ -40,6 +42,46 @@ const jour = (t: unknown) => {
 };
 const depuis = (h: number) => new Date(Date.now() - h * 3600e3).toISOString();
 const token = () => crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+
+// Qui parle ? L'appli joint la session de la personne connectée à sa base Stockaarud.
+// Le relais demande à cette base quel est son rôle : sans session valable d'un membre, rien ne part.
+const ROLE_CACHE = new Map<string, { role: string; at: number }>();
+async function appelant(req: Request, b: any): Promise<{ ref: string; role: string } | null> {
+  const ref = cleOk(b?.ref, 40), key = req.headers.get("apikey") ?? "", auth = req.headers.get("authorization") ?? "";
+  if (!/^[a-z0-9]{20}$/.test(ref) || !key || !/^Bearer [A-Za-z0-9._-]{20,}$/.test(auth)) return null;
+  const ck = ref + "|" + auth.slice(-40), c = ROLE_CACHE.get(ck);
+  if (c && Date.now() - c.at < 5 * 60e3) return { ref, role: c.role };
+  try {
+    const r = await fetch(`https://${ref}.supabase.co/rest/v1/rpc/mon_role`, {
+      method: "POST", headers: { apikey: key, authorization: auth, "content-type": "application/json" }, body: "{}",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const role = await r.json();
+    if (role !== "coordo" && role !== "equipe") return null;
+    if (ROLE_CACHE.size > 500) ROLE_CACHE.clear();
+    ROLE_CACHE.set(ck, { role, at: Date.now() });
+    return { ref, role };
+  } catch (_) { return null; }
+}
+// Les adresses rattachées à ce CAARUD : un CAARUD n'écrit qu'aux adresses qu'il a lui-même inscrites.
+async function rattachees(ref: string, dest: string[], prendre = false) {
+  if (!dest.length) return [] as string[];
+  const { data } = await sb.from("abonnes_bases").select("email").eq("ref", ref).in("email", dest);
+  const ok = new Set((data ?? []).map((x: any) => x.email));
+  // adresses inscrites avant ce contrôle (sans rattachement) : le premier CAARUD qui les utilise les garde
+  const libres = dest.filter((e) => !ok.has(e));
+  if (prendre && libres.length) {
+    const { data: prises } = await sb.from("abonnes_bases").select("email").in("email", libres);
+    const pris = new Set((prises ?? []).map((x: any) => x.email));
+    const aPrendre = libres.filter((e) => !pris.has(e));
+    if (aPrendre.length) {
+      await sb.from("abonnes_bases").upsert(aPrendre.map((email) => ({ email, ref })), { onConflict: "email,ref", ignoreDuplicates: true });
+      aPrendre.forEach((e) => ok.add(e));
+    }
+  }
+  return dest.filter((e) => ok.has(e));
+}
 
 async function compte(table: string, f: (q: any) => any) {
   const { count } = await f(sb.from(table).select("*", { count: "exact", head: true }));
@@ -77,11 +119,13 @@ async function brevo(to: string, sujet: string, html: string, texte: string) {
 }
 
 // Inscription : crée l'adresse si besoin et lui envoie le lien de confirmation.
-async function abonner(email: string, caarud: string) {
+async function abonner(email: string, caarud: string, ref: string) {
+  await sb.from("abonnes_bases").upsert({ email, ref }, { onConflict: "email,ref", ignoreDuplicates: true });
   const { data: a } = await sb.from("abonnes").select("*").eq("email", email).maybeSingle();
   if (a && a.confirme_at) return "confirme";
   if (a && a.demande_at > depuis(DELAI_CONFIRMATION_H)) return "attente";
   if ((await compte("envois", (q) => q.eq("type", "confirmation").gt("at", depuis(24)))) >= MAX_CONFIRMATIONS_JOUR) return "plus_tard";
+  if ((await compte("envois", (q) => q.eq("type", "confirmation").like("cle", "conf|" + ref + "|%").gt("at", depuis(24)))) >= MAX_CONF_PAR_BASE_JOUR) return "plus_tard";
   const tk = a ? a.token : token();
   if (a) await sb.from("abonnes").update({ demande_at: new Date().toISOString() }).eq("email", email);
   else await sb.from("abonnes").insert({ email, token: tk });
@@ -103,7 +147,7 @@ async function abonner(email: string, caarud: string) {
     else await sb.from("abonnes").delete().eq("email", email);
     throw e;
   }
-  await sb.from("envois").insert({ cle: "conf|" + email + "|" + Date.now(), email, type: "confirmation" });
+  await sb.from("envois").insert({ cle: "conf|" + ref + "|" + email + "|" + Date.now(), email, type: "confirmation" });
   return "attente";
 }
 
@@ -151,14 +195,15 @@ function composer(type: string, caarud: string, data: any): Mail | null {
   return null;
 }
 
-async function envoyer(b: any) {
-  const type = String(b.type || ""), ref = cleOk(b.ref, 40), cle = cleOk(b.cle), caarud = propre(b.caarud, 60);
+async function envoyer(b: any, ref: string) {
+  const type = String(b.type || ""), cle = cleOk(b.cle), caarud = propre(b.caarud, 60);
   if (!ref || !cle) return json({ erreur: "requête incomplète" }, 400);
-  const dest = mails(b.emails);
+  const dest = await rattachees(ref, mails(b.emails), true);
   const { data: conf } = await sb.from("abonnes").select("email, token").in("email", dest.length ? dest : [""]).not("confirme_at", "is", null);
   const res = { envoyes: 0, deja: 0, non_confirmes: dest.length - (conf?.length ?? 0), limites: 0 };
   if (!conf?.length) return json(res);
   if ((await compte("envois", (q) => q.gt("at", depuis(24)))) >= MAX_TOTAL_JOUR) return json({ ...res, limites: conf.length });
+  if ((await compte("envois", (q) => q.like("cle", ref + "|%").gt("at", depuis(24)))) >= MAX_PAR_BASE_JOUR) return json({ ...res, limites: conf.length });
   for (const a of conf) {
     let data = b.data;
     const cles: string[] = [];
@@ -205,24 +250,27 @@ Deno.serve(async (req: Request) => {
       return Response.redirect(PAGE + "?etat=" + (deja?.length ? "confirme" : "inconnu"), 302);
     }
     const b = await req.json().catch(() => ({}));
-    if (b.action === "abonner") {
-      const out: Record<string, string> = {};
-      for (const e of mails(b.emails)) out[e] = await abonner(e, propre(b.caarud, 60));
-      return json({ etats: out });
-    }
-    if (b.action === "etat") {
-      const dest = mails(b.emails);
-      const { data } = await sb.from("abonnes").select("email, confirme_at").in("email", dest.length ? dest : [""]);
-      const out: Record<string, string> = {};
-      for (const e of dest) { const a = (data ?? []).find((x: any) => x.email === e); out[e] = a ? (a.confirme_at ? "confirme" : "attente") : "inconnu"; }
-      return json({ etats: out });
-    }
     if (b.action === "stop") {
       const tk = cleOk(b.token, 64);
       if (tk) await sb.from("abonnes").delete().eq("token", tk);
       return json({ ok: true });
     }
-    if (b.action === "envoyer") return await envoyer(b);
+    const qui = await appelant(req, b);
+    if (!qui) return json({ erreur: "appli non reconnue : reconnecte-toi à ta base Stockaarud" }, 401);
+    if (b.action === "abonner") {
+      if (qui.role !== "coordo") return json({ erreur: "réservé au responsable stock" }, 403);
+      const out: Record<string, string> = {};
+      for (const e of mails(b.emails)) out[e] = await abonner(e, propre(b.caarud, 60), qui.ref);
+      return json({ etats: out });
+    }
+    if (b.action === "etat") {
+      const tous = mails(b.emails), dest = await rattachees(qui.ref, tous);
+      const { data } = await sb.from("abonnes").select("email, confirme_at").in("email", dest.length ? dest : [""]);
+      const out: Record<string, string> = {};
+      for (const e of tous) { const a = dest.includes(e) && (data ?? []).find((x: any) => x.email === e); out[e] = a ? (a.confirme_at ? "confirme" : "attente") : "inconnu"; }
+      return json({ etats: out });
+    }
+    if (b.action === "envoyer") return await envoyer(b, qui.ref);
     return json({ erreur: "action inconnue" }, 400);
   } catch (e) {
     console.error(String(e));
