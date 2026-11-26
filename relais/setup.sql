@@ -24,3 +24,19 @@ create index if not exists envois_at on public.envois (at);
 alter table public.abonnes enable row level security;
 alter table public.envois  enable row level security;
 revoke all on public.abonnes, public.envois from anon, authenticated;
+
+-- Rattachement des adresses aux CAARUD (novembre 2026) : un CAARUD n'écrit qu'aux adresses qu'il a inscrites.
+create table if not exists public.abonnes_bases (
+  email  text not null,
+  ref    text not null,
+  cree_at timestamptz not null default now(),
+  primary key (email, ref)
+);
+create index if not exists abonnes_bases_ref on public.abonnes_bases (ref);
+alter table public.abonnes_bases enable row level security;
+revoke all on public.abonnes_bases from anon, authenticated;
+-- Les adresses déjà inscrites sont rattachées aux CAARUD qui leur ont déjà écrit.
+insert into public.abonnes_bases (email, ref)
+  select distinct email, split_part(cle, '|', 1) from public.envois
+  where cle not like 'conf|%' and split_part(cle, '|', 1) ~ '^[a-z0-9]{20}$'
+on conflict do nothing;
