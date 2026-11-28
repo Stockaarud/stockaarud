@@ -17,6 +17,9 @@ const MAX_CONFIRMATIONS_JOUR = 60; // mails de confirmation par jour, toutes adr
 const DELAI_CONFIRMATION_H = 6;    // pas plus d'un mail de confirmation par adresse toutes les 6 h
 const MAX_PAR_BASE_JOUR = 80;      // alertes par CAARUD et par jour : un abus ne bloque pas les autres CAARUD
 const MAX_CONF_PAR_BASE_JOUR = 15; // mails de confirmation par CAARUD et par jour
+const MAX_CONF_BASE_NEUVE = 5;     // ... et pendant les 7 premiers jours d'une base que le relais ne connaissait pas
+const MAX_BASES_NOUVELLES_JOUR = 3; // bases inconnues admises par jour (installations à la main)
+const GARDE_ENVOIS_J = 40;         // le journal des envois est effacé au-delà
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -59,28 +62,37 @@ async function appelant(req: Request, b: any): Promise<{ ref: string; role: stri
     if (!r.ok) return null;
     const role = await r.json();
     if (role !== "coordo" && role !== "equipe") return null;
+    if (!(await baseConnue(ref, role))) return null;
     if (ROLE_CACHE.size > 500) ROLE_CACHE.clear();
     ROLE_CACHE.set(ck, { role, at: Date.now() });
     return { ref, role };
   } catch (_) { return null; }
 }
-// Les adresses rattachées à ce CAARUD : un CAARUD n'écrit qu'aux adresses qu'il a lui-même inscrites.
-async function rattachees(ref: string, dest: string[], prendre = false) {
-  if (!dest.length) return [] as string[];
-  const { data } = await sb.from("abonnes_bases").select("email").eq("ref", ref).in("email", dest);
-  const ok = new Set((data ?? []).map((x: any) => x.email));
-  // adresses inscrites avant ce contrôle (sans rattachement) : le premier CAARUD qui les utilise les garde
-  const libres = dest.filter((e) => !ok.has(e));
-  if (prendre && libres.length) {
-    const { data: prises } = await sb.from("abonnes_bases").select("email").in("email", libres);
-    const pris = new Set((prises ?? []).map((x: any) => x.email));
-    const aPrendre = libres.filter((e) => !pris.has(e));
-    if (aPrendre.length) {
-      await sb.from("abonnes_bases").upsert(aPrendre.map((email) => ({ email, ref })), { onConflict: "email,ref", ignoreDuplicates: true });
-      aPrendre.forEach((e) => ok.add(e));
-    }
-  }
-  return dest.filter((e) => ok.has(e));
+// Une base est reconnue si le bouton « Connecter Supabase » l'a créée ou si elle a déjà des abonnés.
+// Les autres (installations à la main) sont admises au compte-gouttes, et seulement à la demande d'un responsable stock :
+// n'importe quel projet Supabase ne peut pas se faire passer pour un CAARUD et épuiser les envois de tous.
+async function baseConnue(ref: string, role: string) {
+  const { data } = await sb.from("bases_connues").select("ref").eq("ref", ref).maybeSingle();
+  if (data) return true;
+  if (role !== "coordo") return false;
+  if ((await compte("bases_connues", (q) => q.eq("source", "auto").gt("cree_at", depuis(24)))) >= MAX_BASES_NOUVELLES_JOUR) return false;
+  const { error } = await sb.from("bases_connues").insert({ ref, source: "auto" });
+  return !error;
+}
+async function baseNeuve(ref: string) {
+  const { data } = await sb.from("bases_connues").select("source, cree_at").eq("ref", ref).maybeSingle();
+  return !data || (data.source === "auto" && data.cree_at > depuis(24 * 7));
+}
+// Les adresses de ce CAARUD : celles qu'il a inscrites lui-même, confirmées ou non.
+async function rattachees(ref: string, dest: string[]) {
+  if (!dest.length) return [] as { email: string; confirme_at: string | null }[];
+  const { data } = await sb.from("abonnes_bases").select("email, confirme_at").eq("ref", ref).in("email", dest);
+  return (data ?? []) as { email: string; confirme_at: string | null }[];
+}
+// Ménage : le journal des envois et les installations terminées ne sont pas gardés.
+async function menage() {
+  await sb.from("envois").delete().lt("at", depuis(24 * GARDE_ENVOIS_J));
+  await sb.from("connexions").delete().lt("cree_at", new Date(Date.now() - 30 * 60000).toISOString());
 }
 
 async function compte(table: string, f: (q: any) => any) {
@@ -121,15 +133,19 @@ async function brevo(to: string, sujet: string, html: string, texte: string) {
 // Inscription : crée l'adresse si besoin et lui envoie le lien de confirmation.
 async function abonner(email: string, caarud: string, ref: string) {
   await sb.from("abonnes_bases").upsert({ email, ref }, { onConflict: "email,ref", ignoreDuplicates: true });
+  const { data: lien0 } = await sb.from("abonnes_bases").select("confirme_at").eq("email", email).eq("ref", ref).maybeSingle();
+  if (lien0 && lien0.confirme_at) return "confirme";
   const { data: a } = await sb.from("abonnes").select("*").eq("email", email).maybeSingle();
-  if (a && a.confirme_at) return "confirme";
-  if (a && a.demande_at > depuis(DELAI_CONFIRMATION_H)) return "attente";
+  // un seul mail de confirmation par adresse et par CAARUD toutes les 6 h
+  if ((await compte("envois", (q) => q.eq("type", "confirmation").like("cle", "conf|" + ref + "|" + email + "|%").gt("at", depuis(DELAI_CONFIRMATION_H)))) > 0) return "attente";
+  if ((await compte("envois", (q) => q.eq("type", "confirmation").eq("email", email).gt("at", depuis(24)))) >= 3) return "plus_tard";
   if ((await compte("envois", (q) => q.eq("type", "confirmation").gt("at", depuis(24)))) >= MAX_CONFIRMATIONS_JOUR) return "plus_tard";
-  if ((await compte("envois", (q) => q.eq("type", "confirmation").like("cle", "conf|" + ref + "|%").gt("at", depuis(24)))) >= MAX_CONF_PAR_BASE_JOUR) return "plus_tard";
+  const maxBase = (await baseNeuve(ref)) ? MAX_CONF_BASE_NEUVE : MAX_CONF_PAR_BASE_JOUR;
+  if ((await compte("envois", (q) => q.eq("type", "confirmation").like("cle", "conf|" + ref + "|%").gt("at", depuis(24)))) >= maxBase) return "plus_tard";
   const tk = a ? a.token : token();
   if (a) await sb.from("abonnes").update({ demande_at: new Date().toISOString() }).eq("email", email);
   else await sb.from("abonnes").insert({ email, token: tk });
-  const lien = SELF + "?confirmer=" + tk;
+  const lien = PAGE + "?confirmer=" + tk + "&b=" + ref;
   const html = gabarit(
     "Confirme ton adresse",
     p(`Cette adresse a été inscrite aux alertes de stock de <b>${esc(caarud || "ton CAARUD")}</b> dans Stockaarud.`) +
@@ -198,9 +214,10 @@ function composer(type: string, caarud: string, data: any): Mail | null {
 async function envoyer(b: any, ref: string) {
   const type = String(b.type || ""), cle = cleOk(b.cle), caarud = propre(b.caarud, 60);
   if (!ref || !cle) return json({ erreur: "requête incomplète" }, 400);
-  const dest = await rattachees(ref, mails(b.emails), true);
-  const { data: conf } = await sb.from("abonnes").select("email, token").in("email", dest.length ? dest : [""]).not("confirme_at", "is", null);
-  const res = { envoyes: 0, deja: 0, non_confirmes: dest.length - (conf?.length ?? 0), limites: 0 };
+  const liens = await rattachees(ref, mails(b.emails)), oui = liens.filter((x) => x.confirme_at).map((x) => x.email);
+  const { data: conf } = await sb.from("abonnes").select("email, token").in("email", oui.length ? oui : [""]);
+  const res = { envoyes: 0, deja: 0, non_confirmes: mails(b.emails).length - (conf?.length ?? 0), limites: 0 };
+  await menage();
   if (!conf?.length) return json(res);
   if ((await compte("envois", (q) => q.gt("at", depuis(24)))) >= MAX_TOTAL_JOUR) return json({ ...res, limites: conf.length });
   if ((await compte("envois", (q) => q.like("cle", ref + "|%").gt("at", depuis(24)))) >= MAX_PAR_BASE_JOUR) return json({ ...res, limites: conf.length });
@@ -245,15 +262,41 @@ Deno.serve(async (req: Request) => {
     if (req.method === "GET") {
       const tk = cleOk(u.searchParams.get("confirmer"), 64);
       if (!tk) return json({ ok: true, service: "relais d'alertes Stockaarud" });
-      const { data } = await sb.from("abonnes").update({ confirme_at: new Date().toISOString() }).eq("token", tk).is("confirme_at", null).select("email");
-      const { data: deja } = data?.length ? { data } : await sb.from("abonnes").select("email").eq("token", tk);
-      return Response.redirect(PAGE + "?etat=" + (deja?.length ? "confirme" : "inconnu"), 302);
+      // ancien lien de confirmation : on renvoie vers la page, où la personne confirme d'un clic
+      return Response.redirect(PAGE + "?confirmer=" + tk, 302);
     }
     const b = await req.json().catch(() => ({}));
     if (b.action === "stop") {
+      // « Ne plus rien recevoir » : l'adresse disparaît de toutes les tables
       const tk = cleOk(b.token, 64);
-      if (tk) await sb.from("abonnes").delete().eq("token", tk);
+      if (tk) {
+        const { data: a } = await sb.from("abonnes").select("email").eq("token", tk).maybeSingle();
+        if (a) {
+          await sb.from("abonnes_bases").delete().eq("email", a.email);
+          await sb.from("envois").delete().eq("email", a.email);
+          await sb.from("abonnes").delete().eq("email", a.email);
+        }
+      }
       return json({ ok: true });
+    }
+    if (b.action === "confirmer") {
+      const tk = cleOk(b.token, 64), ref = cleOk(b.ref, 40);
+      const { data: a } = tk ? await sb.from("abonnes").select("email").eq("token", tk).maybeSingle() : { data: null };
+      if (!a) return json({ etat: "inconnu" });
+      const now = new Date().toISOString();
+      let q = sb.from("abonnes_bases").update({ confirme_at: now }).eq("email", a.email).is("confirme_at", null);
+      if (/^[a-z0-9]{20}$/.test(ref)) q = q.eq("ref", ref);
+      else {
+        // lien d'avant le 28 novembre 2026, sans CAARUD : on confirme le plus ancien rattachement
+        const { data: l } = await sb.from("abonnes_bases").select("ref").eq("email", a.email).order("cree_at", { ascending: true }).limit(1).maybeSingle();
+        if (!l) return json({ etat: "inconnu" });
+        q = q.eq("ref", l.ref);
+      }
+      await q;
+      const { data: ok } = await sb.from("abonnes_bases").select("ref").eq("email", a.email).not("confirme_at", "is", null).limit(1);
+      if (!ok?.length) return json({ etat: "inconnu" });
+      await sb.from("abonnes").update({ confirme_at: now }).eq("email", a.email).is("confirme_at", null);
+      return json({ etat: "confirme" });
     }
     const qui = await appelant(req, b);
     if (!qui) return json({ erreur: "appli non reconnue : reconnecte-toi à ta base Stockaarud" }, 401);
@@ -264,10 +307,9 @@ Deno.serve(async (req: Request) => {
       return json({ etats: out });
     }
     if (b.action === "etat") {
-      const tous = mails(b.emails), dest = await rattachees(qui.ref, tous);
-      const { data } = await sb.from("abonnes").select("email, confirme_at").in("email", dest.length ? dest : [""]);
+      const tous = mails(b.emails), liens = await rattachees(qui.ref, tous);
       const out: Record<string, string> = {};
-      for (const e of tous) { const a = dest.includes(e) && (data ?? []).find((x: any) => x.email === e); out[e] = a ? (a.confirme_at ? "confirme" : "attente") : "inconnu"; }
+      for (const e of tous) { const a = liens.find((x) => x.email === e); out[e] = a ? (a.confirme_at ? "confirme" : "attente") : "inconnu"; }
       return json({ etats: out });
     }
     if (b.action === "envoyer") return await envoyer(b, qui.ref);

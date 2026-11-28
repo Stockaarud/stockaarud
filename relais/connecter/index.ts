@@ -14,13 +14,20 @@ const CLIENT_ID = Deno.env.get("SB_OAUTH_CLIENT_ID") ?? "0dab1e3b-2ad6-400c-bd61
 const CLIENT_SECRET = Deno.env.get("SB_OAUTH_CLIENT_SECRET") ?? "";
 const API = Deno.env.get("SB_API") ?? "https://api.supabase.com";
 const MOI = (Deno.env.get("CONNECTER_URL") ?? SB_URL.replace(/\/+$/, "") + "/functions/v1/connecter");
-const SCRIPT = Deno.env.get("SETUP_SQL_URL") ?? "https://raw.githubusercontent.com/Stockaarud/stockaarud/main/supabase/setup.sql";
+// Le script d'installation est pris à une version précise du dépôt, et son empreinte est vérifiée avant de le lancer :
+// une modification du dépôt ne change pas ce qui est exécuté sur la base d'un CAARUD tant que ces deux lignes ne changent pas.
+// (À chaque nouvelle version de supabase/setup.sql : mettre ici le commit et le SHA-256 du fichier, puis redéployer.)
+const SCRIPT_COMMIT = "641190c1e5b73d3505195f346c4df4061caa6141";
+const SCRIPT_SHA256 = Deno.env.get("SETUP_SQL_SHA256") ?? "4f406887e66abb987d83d1f8147052a75a6e6bde51623d36216df054abc411b7";
+const SCRIPT = Deno.env.get("SETUP_SQL_URL") ?? "https://raw.githubusercontent.com/Stockaarud/stockaarud/" + SCRIPT_COMMIT + "/supabase/setup.sql";
 // Seules ces adresses peuvent lancer une connexion et en recevoir le résultat.
 const RETOURS = (Deno.env.get("RETOURS") ?? "https://stockaarud.github.io/stockaarud/").split(",").map((s) => s.trim()).filter(Boolean);
 const NOM = "stockaarud", REGION = "eu-west-3";
 const DUREE_MIN = 30;
 // Au-delà de ce nombre de départs en 10 minutes (tous CAARUD confondus), le relais refuse les suivants.
 const MAX_DEPARTS_10MIN = Number(Deno.env.get("MAX_DEPARTS_10MIN") ?? "100");
+// ... et un même appareil (même adresse réseau) n'en lance pas plus de 5 : il ne peut pas bloquer les autres.
+const MAX_DEPARTS_IP_10MIN = 5;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -71,13 +78,20 @@ const lienOk = (s: string) => /^[a-f0-9]{32,64}$/.test(s);
 
 async function menage() {
   await sb.from("connexions").delete().lt("cree_at", new Date(Date.now() - DUREE_MIN * 60000).toISOString());
+  // une installation terminée n'est gardée que 5 minutes, le temps que l'appli lise le résultat
+  await sb.from("connexions").delete().in("etat", ["fini", "echec"]).lt("maj_at", new Date(Date.now() - 5 * 60000).toISOString());
+}
+// Empreinte de l'adresse réseau de l'appelant : sert à compter, l'adresse elle-même n'est pas gardée.
+async function empreinteIp(req: Request) {
+  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || req.headers.get("cf-connecting-ip") || "";
+  return ip ? hex(await sha("ip|" + ip + "|" + CLIENT_SECRET)).slice(0, 32) : "";
 }
 async function maj(id: string, v: Record<string, unknown>) {
   await sb.from("connexions").update({ ...v, maj_at: new Date().toISOString() }).eq("id", id);
 }
 
 /* 1. Départ : on envoie le navigateur vers l'écran d'autorisation de Supabase. */
-async function depart(url: URL) {
+async function depart(url: URL, req: Request) {
   const retour = retourOk(url.searchParams.get("retour") || RETOURS[0]);
   if (!retour) return json({ erreur: "retour" }, 400);
   const lien = (url.searchParams.get("lien") || "").toLowerCase();
@@ -86,8 +100,13 @@ async function depart(url: URL) {
   await menage();
   const { count } = await sb.from("connexions").select("id", { count: "exact", head: true }).like("id", "d:%").gt("cree_at", new Date(Date.now() - 600000).toISOString());
   if ((count ?? 0) >= MAX_DEPARTS_10MIN) return vers(retour + "#connecter-erreur-occupe");
+  const ip = await empreinteIp(req);
+  if (ip) {
+    const { count: n } = await sb.from("connexions").select("id", { count: "exact", head: true }).like("id", "d:%").eq("ip", ip).gt("cree_at", new Date(Date.now() - 600000).toISOString());
+    if ((n ?? 0) >= MAX_DEPARTS_IP_10MIN) return vers(retour + "#connecter-erreur-occupe");
+  }
   const etat = hex(alea(24)), verifier = b64u(alea(48));
-  const { error } = await sb.from("connexions").insert({ id: "d:" + etat, etat: "attente", verifier, retour, lien: hex(await sha(lien)) });
+  const { error } = await sb.from("connexions").insert({ id: "d:" + etat, etat: "attente", verifier, retour, lien: hex(await sha(lien)), ip: ip || null });
   if (error) return vers(retour + "#connecter-erreur-relais");
   const q = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: MOI, response_type: "code", state: etat, code_challenge: b64u(await sha(verifier)), code_challenge_method: "S256" });
   return vers(API + "/v1/oauth/authorize?" + q.toString());
@@ -175,6 +194,7 @@ async function avance(jeton: string, lien: string) {
       const s = await fetch(SCRIPT, { headers: { "cache-control": "no-cache" } });
       const sql = s.ok ? await s.text() : "";
       if (!/premiere_installation/.test(sql)) return echec("Le script d'installation est introuvable. Réessaie plus tard, ou installe à la main.");
+      if (SCRIPT_SHA256 && hex(await sha(sql)) !== SCRIPT_SHA256) { console.error("script: empreinte inattendue"); return echec("Le script d'installation ne correspond pas à la version attendue. Rien n'a été lancé : installe à la main, ou réessaie plus tard."); }
       const q = await mgmt(tok, "/v1/projects/" + ref + "/database/query", { method: "POST", body: JSON.stringify({ query: sql }) });
       if (!q.ok) {
         essais++;
@@ -209,6 +229,8 @@ async function avance(jeton: string, lien: string) {
         return echec("La base est prête, mais sa clé publique n'a pas pu être lue. Termine à la main : étape 3 de l'installation.");
       }
       await maj(id, { etat: "fini", cle: pub.api_key, jeton: null });
+      // la base est désormais reconnue par le relais d'alertes
+      await sb.from("bases_connues").upsert({ ref, source: "connecter" }, { onConflict: "ref", ignoreDuplicates: true });
       return json({ etape: "fini", ref, cle: pub.api_key, reprise });
     }
     return echec("État inconnu.");
@@ -223,7 +245,7 @@ Deno.serve(async (req) => {
     if (req.method === "GET") {
       if (url.searchParams.has("state") || url.searchParams.has("code") || url.searchParams.has("error")) return await retourSupabase(url);
       if (url.searchParams.has("sante")) return json({ ok: true, id: !!CLIENT_ID, secret: !!CLIENT_SECRET, retour: MOI });
-      return await depart(url);
+      return await depart(url, req);
     }
     if (req.method === "POST") {
       const b = await req.json().catch(() => ({}));

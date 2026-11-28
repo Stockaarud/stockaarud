@@ -62,3 +62,27 @@ create index if not exists connexions_cree_at on public.connexions (cree_at);
 alter table public.connexions add column if not exists lien text;
 alter table public.connexions enable row level security;
 revoke all on public.connexions from anon, authenticated;
+
+-- Durcissement (28 novembre 2026).
+-- 1. La confirmation vaut pour un couple adresse + CAARUD : une adresse confirmée pour un CAARUD
+--    ne reçoit rien d'un autre tant qu'elle ne l'a pas confirmé lui aussi.
+alter table public.abonnes_bases add column if not exists confirme_at timestamptz;
+update public.abonnes_bases b set confirme_at = a.confirme_at
+  from public.abonnes a where a.email = b.email and a.confirme_at is not null and b.confirme_at is null;
+
+-- 2. Bases reconnues : celles créées par le bouton « Connecter Supabase », celles qui ont déjà des abonnés,
+--    et quelques nouvelles par jour pour les installations à la main (le relais les admet au compte-gouttes).
+create table if not exists public.bases_connues (
+  ref     text primary key,
+  source  text not null default 'auto',
+  cree_at timestamptz not null default now()
+);
+alter table public.bases_connues enable row level security;
+revoke all on public.bases_connues from anon, authenticated;
+insert into public.bases_connues (ref, source, cree_at)
+  select distinct ref, 'ancien', now() - interval '30 days' from public.abonnes_bases where ref ~ '^[a-z0-9]{20}$'
+on conflict do nothing;
+
+-- 3. Départs de « Connecter Supabase » comptés par appareil (empreinte de l'adresse, jamais l'adresse elle-même).
+alter table public.connexions add column if not exists ip text;
+create index if not exists connexions_ip on public.connexions (ip, cree_at);
