@@ -15,11 +15,12 @@ jobs:
         run: |
           if [ -z "$BASES" ]; then echo "Secret absent"; exit 0; fi
           fail=0
+          n=0
           while read -r ref key; do
             case "$ref" in ''|\#*) continue;; esac
             code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://$ref.supabase.co/rest/v1/rpc/ping" \
               -H "apikey: $key" -H "Authorization: Bearer $key" -H "Content-Type: application/json" -d '{}')
-            echo "$ref : $code"
+            n=$((n+1)); echo "base $n : $code"
             [ "$code" = "200" ] || fail=1
           done <<< "$BASES"
           exit $fail
