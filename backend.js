@@ -15,7 +15,7 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   /* ---------- Plusieurs CAARUD sur le même appareil ----------
      Chaque base a ses propres clés locales (rôle, cache, file d'attente hors ligne…). */
-  const refOf = u => { const m = /^https:\/\/([a-z0-9-]+)\.supabase\.co/i.exec(u || ""); return m ? m[1].toLowerCase() : String(u || "").replace(/[^a-z0-9]/gi, "").slice(-24); };
+  const refOf = u => { const m = /^https:\/\/([a-z0-9-]+)\.supabase\.co(?:[\/:?#]|$)/i.exec(u || ""); return m ? m[1].toLowerCase() : String(u || "").replace(/[^a-z0-9]/gi, "").slice(-24); };
   const lsKeys = p => { const o = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(p)) o.push(k); } } catch (e) {} return o; };
   const lsDrop = p => lsKeys(p).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
   function addBase(u, k, n) {
@@ -37,12 +37,17 @@
   const urlCode = (params.get("code") || "").trim().toUpperCase();
   // La base du CAARUD voyage dans le lien d'invitation : ?b=<projet>&k=<clé publique>
   const pB = (params.get("b") || "").trim(), pK = (params.get("k") || "").trim();
+  /* Un lien ne peut désigner qu'un projet Supabase (ou la base prévue par config.js), et ne remplace jamais la base en cours sans demander. */
+  const linkUrl = b => { b = String(b || "").trim(); if (/^[a-z0-9]{20}$/i.test(b)) return "https://" + b.toLowerCase() + ".supabase.co"; const u = b.replace(/\/+$/, ""); if (/^https:\/\/[a-z0-9]{20}\.supabase\.co$/i.test(u)) return u.toLowerCase(); if (CFG.supabaseUrl && u === String(CFG.supabaseUrl).replace(/\/+$/, "")) return u; return ""; };
+  const keyOk = k => /^[A-Za-z0-9._-]{20,600}$/.test(k);
+  const autreBase = u => { const cur = refOf(LS.get("url", "") || CFG.supabaseUrl || ""), L = LS.get("bases", []) || []; return (!!cur || L.length > 0) && cur !== refOf(u) && !L.some(x => refOf(x.u) === refOf(u)); };
+  let linkOk = false;
   if (pB && pK) {
-    const u = /^https:\/\//.test(pB) ? pB.replace(/\/+$/, "") : "https://" + pB.replace(/[^a-z0-9-]/gi, "") + ".supabase.co";
-    LS.set("url", u); LS.set("key", pK); addBase(u, pK); LS.del("local");
+    const u = linkUrl(pB);
+    if (u && keyOk(pK) && (!autreBase(u) || confirm("Ce lien ouvre la base d'un autre CAARUD que celui de cet appareil. Continuer ?"))) { LS.set("url", u); LS.set("key", pK); addBase(u, pK); LS.del("local"); linkOk = true; }
   }
-  if (urlCode) { LS.set("pendingCode", urlCode); LS.set("pendingFor", refOf(LS.get("url", "") || CFG.supabaseUrl || "")); }
-  const cameFromUrl = !!(urlCode && pB && pK);
+  if (urlCode && (linkOk || !(pB && pK))) { LS.set("pendingCode", urlCode); LS.set("pendingFor", refOf(LS.get("url", "") || CFG.supabaseUrl || "")); }
+  const cameFromUrl = !!(urlCode && linkOk);
   if (urlCode || pB || pK) history.replaceState(null, "", location.pathname + location.hash);
 
   let sbUrl = LS.get("url", "") || CFG.supabaseUrl || "";
@@ -79,11 +84,12 @@
   #skb a.demo{color:var(--accent,#1f4d3a);font-weight:700;display:flex;align-items:center;min-height:44px;margin:-6px 0}
   #skb ol.quoi{margin:0;padding:0;list-style:none;display:grid;gap:8px;counter-reset:q}#skb ol.quoi li{display:flex;gap:10px;font-size:14px;color:var(--muted,#53645d)}#skb ol.quoi li::before{counter-increment:q;content:counter(q);flex:none;width:22px;height:22px;border-radius:50%;background:var(--brand-2,#f2b705);color:var(--brand-ink,#14201d);display:grid;place-items:center;font-weight:800;font-size:12px}#skb ol.quoi b{color:var(--fg,#14201d)}
   #skb .mot{font-weight:700;color:var(--accent,#1f4d3a)}#skb .bar{height:10px;border-radius:5px;background:var(--line,#d0dbd5);overflow:hidden}#skb .bar span{display:block;height:100%;background:linear-gradient(90deg,var(--accent,#1f4d3a),var(--brand-2,#f2b705));border-radius:5px;transition:width .6s ease}
+  #skb details.pb{font-size:14px;color:var(--muted,#53645d)}#skb details.pb summary{cursor:pointer;min-height:44px;display:flex;align-items:center}#skb details.pb p{margin:4px 0}
   #skb .alt{background:none;border:0;color:var(--accent,#1f4d3a);text-decoration:underline;font:inherit;cursor:pointer;padding:10px 0;min-height:44px;text-align:left}`;
   let ov = null;
   function show(html) {
     if (!document.getElementById("skbStyle")) { const st = document.createElement("style"); st.id = "skbStyle"; st.textContent = OV_STYLE; document.head.appendChild(st); }
-    if (!ov) { ov = document.createElement("div"); ov.id = "skb"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); document.body.appendChild(ov); }
+    if (!ov) { ov = document.createElement("div"); ov.id = "skb"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-label", "Connexion à Stockaarud"); document.body.appendChild(ov); }
     ov.innerHTML = '<div class="in"><div class="logo"><img src="icons/icon-192.png" alt=""><b>Stock<span>aarud</span></b></div>' + html + "</div>";
     const f = ov.querySelector("input"); if (f) setTimeout(() => f.focus(), 50);
   }
@@ -122,7 +128,7 @@
         <li><span>Supabase te demande de <b>te connecter</b>, ou de <b>créer un compte gratuit</b>.</span></li>
         <li><span>Une page en anglais te demande d'<b>autoriser Stockaarud</b>. Vérifie que l'organisation proposée est bien la tienne, puis valide.</span></li>
         <li><span>Tu reviens ici et <b>tout se fait tout seul</b>. Ensuite, 5 petites étapes pour ton stock et ton équipe.</span></li></ol>
-      <div class="err" id="sOE">${esc(oaMsg || "")}</div><button class="btn primary big" id="sOA">Connecter Supabase</button>
+      <div class="err" role="alert" id="sOE">${esc(oaMsg || "")}</div><button class="btn primary big" id="sOA">Connecter Supabase</button>
       <p class="fine">L'autorisation sert uniquement à l'installation, puis elle est effacée. Tu peux aussi la retirer toi-même dans Supabase.</p>
       <details id="sMan"${msg || sbKey ? " open" : ""}><summary>Installer à la main (15 minutes)</summary><div class="man">` : `<p>Compte 15 minutes, sur un ordinateur.</p><div class="man">`}
       ${st(1, "Créer la base", `<p>Crée un compte gratuit Supabase, puis un projet « stockaarud » en Europe avec <b>New project</b> (nouveau projet). Attends qu'il soit prêt (1 à 2 minutes).</p><div class="row">${lk("https://supabase.com/dashboard/new", "Créer le projet")}</div>`)}
@@ -132,7 +138,7 @@
       <label id="sUL" hidden>Adresse de la page des clés, ou du projet<input id="sU" placeholder="https://supabase.com/dashboard/project/…" value="${esc(sbUrl)}" autocomplete="off"></label>
       <ul class="chk" id="sChk" hidden aria-live="polite"><li id="sC1"></li><li id="sC2"></li></ul>
       <details id="sCD"><summary>J'ai un code d'installation</summary><p>Utile si l'heure est passée depuis le script, ou si la base a déjà été installée. Pour en obtenir un, lance <b>select public.code_secours();</b> dans l'éditeur SQL.</p><label>Code d'installation<input id="sC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters"></label></details>
-      <div class="err" id="sE">${esc(msg || "")}</div><button class="btn ${OA_OK ? "" : "primary "}big" id="sGo">Installer</button>
+      <div class="err" role="alert" id="sE">${esc(msg || "")}</div><button class="btn ${OA_OK ? "" : "primary "}big" id="sGo">Installer</button>
       <button class="alt" id="sAcc">J'ai un compte responsable stock avec e-mail</button></div>${OA_OK ? "</details>" : ""}</div>`);
     if ($("#sOA")) $("#sOA").onclick = () => { busy($("#sOA"), true); oaPartir(); };
     if ($("#sLocal")) $("#sLocal").onclick = () => { LS.set("local", true); location.reload(); };
@@ -218,7 +224,7 @@
     const E = [["autorise", "Autorisation reçue"], ["creation", "Création de la base (1 à 2 minutes)"], ["script", "Préparation de la base"], ["reglage", "Connexions par code"], ["cles", "Branchement de l'appli"]];
     show(`<div class="card"><h2>Installation en cours</h2><p class="mot" id="oT">C'est parti !</p><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span id="oB" style="width:8%"></span></div><p id="oP">Laisse cette page ouverte : tout se fait tout seul, en 2 à 3 minutes.</p>
       <ul class="chk big" id="oL" aria-live="polite">${E.map(e => `<li data-e="${e[0]}" class="todo">${esc(e[1])}</li>`).join("")}</ul>
-      <div class="err" id="oE"></div><button class="btn primary big" id="oR" hidden>Recommencer</button><button class="alt" id="oM" hidden>Installer à la main</button></div>`);
+      <div class="err" role="alert" id="oE"></div><button class="btn primary big" id="oR" hidden>Recommencer</button><button class="alt" id="oM" hidden>Installer à la main</button></div>`);
     const lib = Object.fromEntries(E);
     const MOT = { autorise: ["C'est parti !", 15], creation: ["Supabase construit ta base : c'est le plus long.", 40], script: ["On y est presque !", 75], reglage: ["Dernière ligne droite !", 88], cles: ["Dernière ligne droite !", 95], fini: ["Ta base est prête 🎉", 100] };
     const voir = (etape) => { const i = E.findIndex(e => e[0] === etape); const mo = MOT[etape]; if (mo && $("#oT")) { $("#oT").textContent = mo[0]; $("#oB").style.width = mo[1] + "%"; $("#oB").parentNode.setAttribute("aria-valuenow", mo[1]); } ov.querySelectorAll("#oL li").forEach((li, n) => { const d = n < i || etape === "fini"; li.className = d ? "ok" : n === i ? "now" : "todo"; li.textContent = (d ? "✓ " : n === i ? "… " : "") + lib[li.dataset.e]; }); };
@@ -262,16 +268,16 @@
 
   function screenLogin(msg) {
     const pc = LS.get("pendingFor", base) === base ? LS.get("pendingCode", "") : "";
-    show(`<div class="card"><h2>Je fais partie de l'équipe</h2><p>Entre le code donné par ton responsable stock, ou scanne son QR code. Ça marche aussi avec un code de responsable stock.</p>
+    show(`<div class="card"><h2>${pc ? "Rejoindre l'équipe" : "Je fais partie de l'équipe"}</h2><p>${pc ? "Ton code est déjà rempli. Appuie sur le bouton." : "Entre le code donné par ton responsable stock, ou scanne son QR code."}</p>
       <input id="tC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters" inputmode="text" value="${esc(pc)}" aria-label="Code d'équipe">
-      <div class="err" id="tE">${esc(msg || "")}</div><button class="btn primary big" id="tGo">Rejoindre l'équipe</button></div>
+      <div class="err" role="alert" id="tE">${esc(msg || "")}</div><button class="btn primary big" id="tGo">Rejoindre l'équipe</button></div>
       <button class="alt" id="cShow">J'ai un compte responsable stock avec e-mail</button>
       <div class="card" id="cCard" hidden><h2>Responsable stock avec un compte</h2>
       <label>Adresse e-mail<input id="cM" type="email" autocomplete="username"></label>
       <label>Mot de passe<input id="cP" type="password" autocomplete="current-password"></label>
-      <div class="err" id="cE"></div><button class="btn big" id="cGo">Se connecter</button>
+      <div class="err" role="alert" id="cE"></div><button class="btn big" id="cGo">Se connecter</button>
       </div>
-      <button class="alt" id="cfg">Changer de base de données</button>`);
+      <details class="pb"><summary>Un problème de connexion ?</summary><p>Vérifie le réseau, puis redemande le lien ou le QR code à ton responsable stock.</p><button class="alt" id="cfg">Changer de base de données</button></details>`);
     $("#tC").onkeydown = e => { if (e.key === "Enter") $("#tGo").click(); };
     // ouverte depuis l'icône de l'écran d'accueil avec le code dans l'adresse : on rejoint tout seul
     if (pc && !msg && cameFromUrl && (navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches))) setTimeout(() => { const g = $("#tGo"); if (g) g.click(); }, 300);
@@ -303,7 +309,7 @@
     show(`<div class="card"><h2>Créer le compte responsable stock</h2><p>Le premier compte créé gère le stock. Il sert aussi de compte de secours : garde bien le mot de passe. Les autres responsables stock n'ont pas besoin de compte : tu leur donneras un code.</p>
       <label>Adresse e-mail<input id="nM" type="email" autocomplete="username"></label>
       <label>Mot de passe (8 caractères ou plus)<input id="nP" type="password" autocomplete="new-password"></label>
-      <div class="err" id="nE"></div><button class="btn primary big" id="nGo">Créer le compte</button>
+      <div class="err" role="alert" id="nE"></div><button class="btn primary big" id="nGo">Créer le compte</button>
       <button class="alt" id="nBack">Retour</button></div>`);
     $("#nBack").onclick = () => screenLogin();
     $("#nGo").onclick = async () => {
@@ -320,7 +326,7 @@
   function screenCoordoCode() {
     show(`<div class="card"><h2>Code responsable stock</h2><p>Stockaarud est déjà installé pour ce CAARUD. Demande un code de responsable stock (Réglages › Accès et appareils).</p>
       <input id="kC" class="code" maxlength="10" autocomplete="off" autocapitalize="characters" aria-label="Code responsable stock">
-      <div class="err" id="kE"></div><button class="btn primary big" id="kGo">Valider</button><button class="alt" id="kOut">Se déconnecter</button></div>`);
+      <div class="err" role="alert" id="kE"></div><button class="btn primary big" id="kGo">Valider</button><button class="alt" id="kOut">Se déconnecter</button></div>`);
     $("#kOut").onclick = () => logout();
     $("#kGo").onclick = async () => {
       const { data, error } = await sb.rpc("rejoindre", { p_code: $("#kC").value.trim().toUpperCase() });
@@ -376,7 +382,8 @@
     let u; try { u = new URL(String(text || "").trim()); } catch (e) { return "Ce n'est pas un lien. Copie le lien d'invitation en entier."; }
     const b = (u.searchParams.get("b") || "").trim(), k = (u.searchParams.get("k") || "").trim(), c = (u.searchParams.get("code") || "").trim().toUpperCase();
     if (!b || !k) return "Ce lien n'est pas un lien d'invitation Stockaarud.";
-    const url = /^https:\/\//.test(b) ? b.replace(/\/+$/, "") : "https://" + b.replace(/[^a-z0-9-]/gi, "") + ".supabase.co";
+    const url = linkUrl(b);
+    if (!url || !keyOk(k)) return "Ce lien n'est pas un lien d'invitation Stockaarud valide.";
     LS.set("url", url); LS.set("key", k); addBase(url, k); if (c) { LS.set("pendingCode", c); LS.set("pendingFor", refOf(url)); }
     location.reload(); return "";
   }
@@ -611,7 +618,7 @@
   }
   if (LOCAL) { role = "coordo"; uid = "local"; synced = true; try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {} resolveReady(true); return; }
   if (!sbUrl || !sbKey || !window.supabase) { screenSetup(!window.supabase ? "La bibliothèque Supabase n'a pas pu se charger : vérifie la connexion internet." : ""); return; }
-  try { sb = window.supabase.createClient(sbUrl, sbKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }); }
+  try { sb = window.supabase.createClient(sbUrl, sbKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }); }
   catch (e) { screenSetup("Adresse ou clé invalide."); return; }
   sb.auth.getSession().then(({ data }) => { if (data.session) enter(); else { const m = BK.get("msg", ""); BK.del("msg"); screenLogin(m); } });
   sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT" && role) { BK.del("role"); location.reload(); } });
