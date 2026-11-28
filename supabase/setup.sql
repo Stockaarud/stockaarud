@@ -292,6 +292,9 @@ create policy "codes coordo" on public.codes_acces for select using (public.est_
 grant select, insert, update, delete on public.documents to authenticated;
 grant select on public.membres, public.codes_acces to authenticated;
 revoke all on public.documents, public.membres, public.codes_acces from anon;
+-- Rien de plus que nécessaire : pas de vidage de table, et les membres et les codes ne se modifient que par les fonctions.
+revoke truncate, trigger, references on public.documents, public.membres, public.codes_acces from authenticated;
+revoke insert, update, delete on public.membres, public.codes_acces from authenticated;
 
 revoke execute on function public.est_membre, public.est_coordo, public.mon_role,
   public.rejoindre, public.creer_code, public.desactiver_codes, public.retirer_equipe, public.retirer_gestion_par_code, public.doc_fusion
