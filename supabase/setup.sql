@@ -75,18 +75,42 @@ $$;
 -- Ancienne entrée « premier compte e-mail = responsable stock » : retirée (l'installation passe par un code).
 drop function if exists public.premier_coordo();
 
+-- Essais ratés de code : au bout de 10 en une heure, l'appareil attend ; au bout de 300 pour toute la base,
+-- plus personne ne peut essayer pendant une heure (les membres déjà entrés ne sont pas gênés).
+create table if not exists public.essais_code (
+  user_id  uuid        primary key,
+  n        int         not null default 0,
+  depuis   timestamptz not null default now()
+);
+alter table public.essais_code enable row level security;
+revoke all on public.essais_code from public, anon, authenticated;
+
 -- Rejoindre avec un code d'invitation.
 create or replace function public.rejoindre(p_code text) returns text
 language plpgsql security definer set search_path = public as $$
-declare r text;
+declare r text; c text := upper(trim(coalesce(p_code, ''))); moi int; tous int;
 begin
   if auth.uid() is null then return null; end if;
-  select role into r from public.codes_acces
-    where code = upper(trim(p_code)) and actif and (expire_at is null or expire_at > now());
-  -- un code faux ou expiré fait attendre une seconde : deviner un code au hasard devient très long
-  if r is null then perform pg_sleep(1); return null; end if;
-  -- un code de responsable stock ne sert qu'une fois
-  if r = 'coordo' then update public.codes_acces set actif = false where code = upper(trim(p_code)); end if;
+  delete from public.essais_code where depuis < now() - interval '1 hour';
+  select n into moi from public.essais_code where user_id = auth.uid();
+  select coalesce(sum(n), 0) into tous from public.essais_code;
+  if coalesce(moi, 0) >= 10 or tous >= 300 then
+    raise exception 'trop d''essais, réessaie dans une heure' using errcode = '42501';
+  end if;
+  -- un code de responsable stock ne sert qu'une fois : il est consommé dans le même geste que sa vérification
+  update public.codes_acces set actif = false
+    where code = c and role = 'coordo' and actif and (expire_at is null or expire_at > now())
+    returning role into r;
+  if r is null then
+    select role into r from public.codes_acces
+      where code = c and role = 'equipe' and actif and (expire_at is null or expire_at > now());
+  end if;
+  if r is null then
+    insert into public.essais_code (user_id, n) values (auth.uid(), 1)
+      on conflict (user_id) do update set n = public.essais_code.n + 1;
+    return null;
+  end if;
+  delete from public.essais_code where user_id = auth.uid();
   -- un code « responsable stock » (rôle coordo) marche aussi sur un appareil sans compte
   insert into public.membres (user_id, role) values (auth.uid(), r)
     on conflict (user_id) do update set role =
@@ -155,10 +179,40 @@ language sql stable set search_path = public as $$
   select coalesce(d->>'type', '') in ('sortie', 'depannage', 'transfert', 'perte', 'reception', 'rupture', 'passage', 'recup')
     and (d->'qte' is null or (jsonb_typeof(d->'qte') = 'number' and (d->>'qte')::numeric >= 0
          and (d->>'qte')::numeric <= case when d->>'type' in ('reception', 'transfert') then 100000 else 10000 end))
+    and (d->>'mois' is null or d->>'mois' ~ '^\d{4}-\d{2}$')
+    and (d->>'jour' is null or d->>'jour' ~ '^\d{4}-\d{2}-\d{2}$')
     and (d->>'type' <> 'reception' or exists (select 1 from public.documents c where c.coll = 'commandes' and c.id = d->>'commande'));
 $$;
 revoke execute on function public.mvt_equipe_ok from public, anon;
 grant execute on function public.mvt_equipe_ok to authenticated;
+
+-- Garde-fous de volume : un document est toujours un objet, une saisie reste petite,
+-- et un membre de l'équipe ne peut pas créer plus de 2 000 saisies par jour (une équipe en fait quelques dizaines).
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'doc_objet') then
+    alter table public.documents add constraint doc_objet check (jsonb_typeof(data) = 'object') not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'doc_taille') then
+    alter table public.documents add constraint doc_taille
+      check (coll not in ('mouvements', 'signalements') or octet_length(data::text) <= 6000) not valid;
+  end if;
+end $$;
+create index if not exists documents_auteur_maj on public.documents (auteur, updated_at);
+create or replace function public.frein_equipe() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or public.est_coordo() then return new; end if;
+  new.updated_at := now();
+  if (select count(*) from public.documents
+        where auteur = auth.uid() and updated_at > now() - interval '1 day') >= 2000 then
+    raise exception 'trop de saisies aujourd''hui' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.frein_equipe from public, anon, authenticated;
+drop trigger if exists frein_equipe on public.documents;
+create trigger frein_equipe before insert on public.documents
+  for each row execute function public.frein_equipe();
 
 -- Première installation, sans code à recopier : pendant l'heure qui suit ce script, et seulement si la base
 -- n'a encore aucun responsable stock, la personne qui branche l'appli le devient. Ensuite la porte se referme.
