@@ -254,6 +254,7 @@
 
   /* ---------- Lire un fichier Excel : { noms: [...], feuilles: { nom: [[cellules en texte]] } } ---------- */
   function lireXlsx(buf) {
+    if ((buf.byteLength || buf.length || 0) > 8e6) throw new Error("Fichier trop gros (plus de 8 Mo)");
     const z = window.fflate.unzipSync(new Uint8Array(buf)), txt = n => (z[n] ? new TextDecoder().decode(z[n]) : ""), P = s => new DOMParser().parseFromString(s, "application/xml");
     const tag = (el, n) => [...el.getElementsByTagName("*")].filter(e => e.localName === n);
     if (!z["xl/workbook.xml"]) throw new Error("pas un classeur Excel");
@@ -265,7 +266,7 @@
       if (!z[t]) continue;
       const rows = [];
       for (const row of tag(P(txt(t)), "row")) { const R = []; let auto = 0;
-        for (const c of tag(row, "c")) { const ref = c.getAttribute("r") || ""; let ci = auto; const m = /^([A-Z]+)/.exec(ref); if (m) { ci = 0; for (const ch of m[1]) ci = ci * 26 + ch.charCodeAt(0) - 64; ci--; } auto = ci + 1;
+        for (const c of tag(row, "c")) { const ref = c.getAttribute("r") || ""; let ci = auto; const m = /^([A-Z]+)/.exec(ref); if (m) { ci = 0; for (const ch of m[1]) ci = ci * 26 + ch.charCodeAt(0) - 64; ci--; } if (ci > 300) continue; auto = ci + 1;
           const ty = c.getAttribute("t"), v = tag(c, "v")[0]; let val = "";
           if (ty === "s") val = sst[+(v ? v.textContent : -1)] ?? ""; else if (ty === "inlineStr") val = tag(c, "t").map(x => x.textContent).join(""); else val = v ? v.textContent : "";
           if (ty !== "s" && ty !== "inlineStr" && ty !== "str" && /^-?\d+\.\d{6,}$/.test(val)) val = String(Math.round(parseFloat(val) * 1e6) / 1e6);
